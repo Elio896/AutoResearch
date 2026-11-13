@@ -38,6 +38,7 @@ def main():
     p.add_argument('--max-cloud-calls', type=int, default=1)
     p.add_argument('--enable-jev', action='store_true', help='云端升级前先问 JEV 值不值得（需 TYPESAFE_API_KEY）')
     p.add_argument('--enable-qwen-router', action='store_true', help='让本地千问决定要不要调云端、调哪个档')
+    p.add_argument('--enable-jev-harness', action='store_true', help='五道零 token 语义门（省 token 的那层）')
     p.add_argument('--experience', default='', help='经验库 jsonl 路径（留空则不启用）')
     p.add_argument('--task-name', default='')
     p.add_argument('--output')
@@ -79,6 +80,12 @@ def main():
         qwen_router = lambda state: decide_escalation(  # noqa: E731
             state, base_url=args.base_url, model=args.small_model)
 
+    # Jev Harness：五道零 token 的门（省 token 的第一道防线）
+    jev_harness = None
+    if args.enable_jev_harness:
+        from jev_harness import JevHarness
+        jev_harness = JevHarness()
+
     loop = ResearchLoop(session, proposer=proposer, budget=budget,
                         patience=args.patience, emit=emit,
                         experience=ExperienceStore(args.experience) if args.experience else None,
@@ -87,7 +94,8 @@ def main():
                         cloud_proposer=cloud_proposer,
                         jev_gate=jev_gate,
                         max_cloud_calls=args.max_cloud_calls,
-                        qwen_router=qwen_router)
+                        qwen_router=qwen_router,
+                        jev_harness=jev_harness)
     result = loop.run()
 
     print('\n=== summary ===')

@@ -63,7 +63,7 @@ class ResearchLoop:
                  experience: ExperienceStore | None = None, task_name: str = '',
                  trajectory_dir: str | Path | None = None, run_id: str | None = None,
                  small_proposer=None, cloud_proposer=None, jev_gate=None,
-                 max_cloud_calls: int = 0, qwen_router=None):
+                 max_cloud_calls: int = 0, qwen_router=None, jev_harness=None):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -88,6 +88,10 @@ class ResearchLoop:
         self.max_cloud_calls = max_cloud_calls
         # 千问路由：本地小模型自己决定「要不要调云端、调哪个档」
         self.qwen_router = qwen_router
+        # Jev Harness：五道零 token 的语义门，先筛掉不值得上云的情况
+        self.jev_harness = jev_harness
+        self._recent_rejections: list[str] = []
+        self._last_gain = None
         self.blueteam = BlueTeam()
         self.run_id = run_id or uuid.uuid4().hex
         self.trajectory = TrajectoryWriter(
@@ -158,7 +162,7 @@ class ResearchLoop:
             if stop:
                 # 本地卡在平台期时，先问 JEV「这次花钱值不值」，值得才升级
                 if reason == 'validation_plateau' and self.cloud_scientist is not None:
-                    if self._try_escalate(best, profile, started):
+                    if self._try_escalate(best, profile, started, no_improvement):
                         no_improvement = 0
                         continue
                 stop_reason = reason
@@ -238,7 +242,8 @@ class ResearchLoop:
         self._adversarial_check(best, profile)
         return self._finish('completed', stop_reason, started)
 
-    def _try_escalate(self, best: dict | None, profile: dict, started: float) -> bool:
+    def _try_escalate(self, best: dict | None, profile: dict, started: float,
+                      no_improvement: int = 0) -> bool:
         """本地卡在平台期。先问 JEV 值不值得花钱，值得才让云端出一个方案。
 
         返回 True 表示"真的升级并跑了一次实验"（调用方继续循环），
@@ -250,6 +255,23 @@ class ResearchLoop:
             self._record('escalation_blocked', reason='cloud_budget',
                          used=self.used['cloud_calls'], cap=self.max_cloud_calls)
             return False
+
+        # 0) Jev Harness：五道零 token 的门，先筛掉根本不值得上云的情况。
+        #    这才是省 token 的地方——它自己一次模型都不调。
+        if self.jev_harness is not None:
+            harness_ctx = {
+                'task': self.task_name,
+                'rows': int(profile.get('rows', 0) or 0),
+                'no_improvement': int(no_improvement),
+                'last_gain': self._last_gain,
+                'recent_rejections': list(self._recent_rejections[-4:]),
+                'recent_proposals': [{'model': r.get('model'), 'parameters': r.get('parameters')}
+                                     for r in self._experiments[-3:]],
+            }
+            harness_decision = self.jev_harness.decide(harness_ctx)
+            self._record('jev_harness_decision', **harness_decision.to_dict())
+            if harness_decision.action != 'escalate':
+                return False
 
         # 1a) 千问路由：本地小模型先判「要不要调、调哪个档」
         if self.qwen_router is not None:
