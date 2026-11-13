@@ -61,7 +61,8 @@ class ResearchLoop:
     def __init__(self, session, proposer=None, budget: Budget | None = None,
                  allowed: dict | None = None, patience: int = 2, emit=None,
                  experience: ExperienceStore | None = None, task_name: str = '',
-                 trajectory_dir: str | Path | None = None, run_id: str | None = None):
+                 trajectory_dir: str | Path | None = None, run_id: str | None = None,
+                 small_proposer=None):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -78,7 +79,8 @@ class ResearchLoop:
         # EvoUndo：每次实验都是一个版本，退步就回滚到历史最优
         self.chain = VersionChain(run_id='')
         # 红蓝对抗：结束前质疑一次最优结果（可关）
-        self.redteam = RedTeam(proposer) if proposer else None
+        # 红队可以用更小的模型——找茬比提方案简单，这是成本分层的第一刀
+        self.redteam = RedTeam(small_proposer or proposer) if (small_proposer or proposer) else None
         self.blueteam = BlueTeam()
         self.run_id = run_id or uuid.uuid4().hex
         self.trajectory = TrajectoryWriter(

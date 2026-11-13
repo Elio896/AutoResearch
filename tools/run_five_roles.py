@@ -27,6 +27,8 @@ def main():
     p.add_argument('--pos-label', default='1')
     p.add_argument('--base-url', default='http://127.0.0.1:11434')
     p.add_argument('--model', default='qwen2.5:7b-instruct-q4_K_M')
+    p.add_argument('--small-model', default='qwen2.5:3b-instruct-q4_K_M',
+                   help='红队用的小模型；留空则与 --model 相同')
     p.add_argument('--max-experiments', type=int, default=5)
     p.add_argument('--max-seconds', type=float, default=300.0)
     p.add_argument('--max-local-calls', type=int, default=6)
@@ -39,6 +41,10 @@ def main():
 
     session = ResearchSession(args.csv, args.target, metric=args.metric, pos_label=args.pos_label)
     proposer = LocalQwenClient(base_url=args.base_url, model=args.model)
+    # 模型分层：Scientist 用大模型，RedTeam 用小模型（找茬比提方案简单）
+    small_proposer = None
+    if args.small_model and args.small_model != args.model:
+        small_proposer = LocalQwenClient(base_url=args.base_url, model=args.small_model)
     budget = Budget(max_experiments=args.max_experiments, max_seconds=args.max_seconds,
                     max_local_calls=args.max_local_calls, max_local_tokens=args.max_local_tokens)
 
@@ -50,7 +56,8 @@ def main():
     loop = ResearchLoop(session, proposer=proposer, budget=budget,
                         patience=args.patience, emit=emit,
                         experience=ExperienceStore(args.experience) if args.experience else None,
-                        task_name=args.task_name or Path(args.csv).stem)
+                        task_name=args.task_name or Path(args.csv).stem,
+                        small_proposer=small_proposer)
     result = loop.run()
 
     print('\n=== summary ===')
