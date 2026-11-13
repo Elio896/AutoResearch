@@ -102,6 +102,53 @@ def create_app(data_directory=None):
     def show_task(task_id: str):
         return invoke(lambda: store.show(task_id))
 
+    @app.get('/evoundo/runs')
+    def list_evoundo_runs():
+        """列出所有研究任务的版本树（只读）。"""
+        import json
+        from pathlib import Path as P
+        base = P(data_directory or '.').resolve().parent / 'artifacts' / 'evoundo'
+        if not base.exists():
+            base = P('artifacts') / 'evoundo'
+        runs = []
+        if base.exists():
+            for run_dir in sorted(base.iterdir()):
+                vf = run_dir / 'versions.json'
+                if not vf.is_file():
+                    continue
+                try:
+                    data = json.loads(vf.read_text(encoding='utf-8'))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                runs.append({'run_id': data.get('run_id') or run_dir.name,
+                             'versions': len(data.get('versions') or []),
+                             'rollbacks': data.get('rollbacks', 0),
+                             'best_score': data.get('best_score')})
+        return {'runs': runs, 'count': len(runs)}
+
+    @app.get('/evoundo/{run_id}')
+    def show_evoundo(run_id: str):
+        """一个任务的完整版本树（只读）。"""
+        import json
+        from pathlib import Path as P
+        for base in (P('artifacts') / 'evoundo', P(data_directory or '.').resolve().parent / 'artifacts' / 'evoundo'):
+            vf = base / run_id / 'versions.json'
+            if vf.is_file():
+                return json.loads(vf.read_text(encoding='utf-8'))
+        raise HTTPException(status_code=404, detail='No such run.')
+
+    @app.get('/experience')
+    def show_experience():
+        """经验池的进化账（只读）：学到多少、用过多少、有效率。"""
+        from experience import ExperienceStore
+        from pathlib import Path as P
+        store = ExperienceStore(P('artifacts') / 'experience.jsonl')
+        return {'lineage': store.lineage(),
+                'active': [{'id': r.get('id'), 'advice': r.get('advice'),
+                            'used_count': r.get('used_count', 0),
+                            'success_count': r.get('success_count', 0)}
+                           for r in store.active_pool()[:20]]}
+
     @app.get('/tasks/{task_id}/export')
     def export_task(task_id: str, format: Literal['json', 'markdown', 'zip'] = 'markdown'):
         import json
