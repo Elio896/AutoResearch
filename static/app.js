@@ -50,6 +50,9 @@ async function loadFile(file) {
 }
 function activeJob(task = state.task) { return ['queued', 'running'].includes(task?.research_job?.state); }
 function updateControls() {
+  const exportBusy = state.busy || activeJob() || state.task?.state === 'finalizing' || state.task?.experiments.some(exp => exp.status === 'running');
+  $('download-report').disabled = !state.serverReady || !state.task || exportBusy;
+  $('download-bundle').disabled = !state.serverReady || !state.task || exportBusy;
   $('start-research').disabled = !state.serverReady || !state.csv || state.busy || activeJob();
   const hasResult = state.task?.experiments.some(exp => exp.status === 'success');
   $('finalize').disabled = !state.serverReady || state.busy || !hasResult || state.task?.state !== 'open' || activeJob() || state.task?.risk_report?.blocked || state.task?.experiments.some(exp => exp.status === 'running');
@@ -148,6 +151,20 @@ async function refreshTasks() {
   }));
   if (!tasks.length) $('task-list').append(element('p', '还没有任务，试试示例数据。', 'muted')); return tasks;
 }
+async function downloadExport(format) {
+  if (!state.task) return;
+  try {
+    const response = await fetch(`/tasks/${encodeURIComponent(state.task.id)}/export?format=${format}`);
+    if (!response.ok) throw new Error('导出失败，请等待研究完成并确认后端已更新。');
+    const blob = await response.blob(), url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a'); anchor.href = url;
+    anchor.download = `evoresearch-${state.task.id}.${format === 'zip' ? 'zip' : 'md'}`;
+    document.body.append(anchor); anchor.click(); anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { toast(error.message, true); }
+}
+$('download-report').onclick = () => downloadExport('markdown');
+$('download-bundle').onclick = () => downloadExport('zip');
 $('csv-file').onchange = event => loadFile(event.target.files[0]);
 ['dragenter', 'dragover'].forEach(name => $('drop-zone').addEventListener(name, event => { event.preventDefault(); $('drop-zone').classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(name => $('drop-zone').addEventListener(name, event => { event.preventDefault(); $('drop-zone').classList.remove('dragging'); if (name === 'drop') loadFile(event.dataTransfer.files[0]); }));
@@ -196,7 +213,7 @@ $('confirm-final').onclick = async () => {
   finally { state.busy = false; updateControls(); }
 };
 async function initialize() {
-  try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review'] || !schema.components?.schemas?.TaskInput?.properties?.metric || !schema.components?.schemas?.ResearchInput?.properties?.baseline_policy) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
+  try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review'] || !schema.components?.schemas?.TaskInput?.properties?.metric || !schema.components?.schemas?.ResearchInput?.properties?.baseline_policy || !schema.paths?.['/tasks/{task_id}/export']) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
   catch (error) { state.serverReady = false; updateControls(); $('connection').textContent = '服务未就绪'; toast(error.message || '无法连接后端，请确认本地服务正在运行。', true); }
 }
 setInterval(async () => {

@@ -5,7 +5,7 @@ import sqlite3
 import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -101,6 +101,21 @@ def create_app(data_directory=None):
     @app.get('/tasks/{task_id}')
     def show_task(task_id: str):
         return invoke(lambda: store.show(task_id))
+
+    @app.get('/tasks/{task_id}/export')
+    def export_task(task_id: str, format: Literal['json', 'markdown', 'zip'] = 'markdown'):
+        import json
+        from research_export import build_manifest, markdown, bundle
+        manifest = invoke(lambda: build_manifest(store.show(task_id)))
+        if format == 'json':
+            content, media, extension = json.dumps(manifest, ensure_ascii=False, indent=2), 'application/json', 'json'
+        elif format == 'zip':
+            content, media, extension = bundle(manifest), 'application/zip', 'zip'
+        else:
+            content, media, extension = markdown(manifest), 'text/markdown', 'md'
+        return Response(content, media_type=media, headers={
+            'Content-Disposition': f'attachment; filename="evoresearch-{manifest["task"]["id"]}.{extension}"',
+            'Cache-Control': 'no-store'})
 
     @app.post('/tasks/{task_id}/review')
     def review_features(task_id: str, body: ReviewInput):
