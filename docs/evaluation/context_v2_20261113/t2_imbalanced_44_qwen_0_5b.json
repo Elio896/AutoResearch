@@ -1,0 +1,272 @@
+{
+  "task": "t2_imbalanced",
+  "seed": 44,
+  "arm": "qwen_0_5b",
+  "model": "Qwen2.5-0.5B-Instruct:latest",
+  "endpoint": "http://127.0.0.1:11435",
+  "metric": "f1_minority",
+  "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+  "split_sha256": "99b008f8aaf6d6b19e1a110e44637a5b846c5b933825871ff8235da5c5054b3b",
+  "budget": {
+    "max_experiments": 3,
+    "max_calls": 2,
+    "max_seconds": 60
+  },
+  "elapsed_seconds": 4.080107800000405,
+  "best_score": 0.35514018691588783,
+  "best_experiment_id": "exp_001",
+  "training_attempts": 2,
+  "test_evaluated": false,
+  "report": {
+    "status": "escalation_required",
+    "stop_reason": "local_call_budget",
+    "experiments": [
+      {
+        "status": "success",
+        "experiment_id": "exp_001",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000
+        },
+        "seed": 44,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.6593450538382926,
+        "validation_accuracy": 0.931,
+        "duration_seconds": 0.037972799997078255,
+        "validation_class_metrics": [
+          {
+            "class_id": 0,
+            "precision": 0.9402061855670103,
+            "recall": 0.9880823401950163,
+            "f1": 0.9635499207606973,
+            "support": 923
+          },
+          {
+            "class_id": 1,
+            "precision": 0.6333333333333333,
+            "recall": 0.24675324675324675,
+            "f1": 0.35514018691588783,
+            "support": 77
+          }
+        ],
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.35514018691588783,
+        "validation_f1_minority": 0.35514018691588783,
+        "validation_minority_precision": 0.6333333333333333,
+        "validation_minority_recall": 0.24675324675324675
+      },
+      {
+        "status": "success",
+        "experiment_id": "exp_002",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000,
+          "C": 10
+        },
+        "seed": 44,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.655538790698577,
+        "validation_accuracy": 0.929,
+        "duration_seconds": 0.034834899997804314,
+        "validation_class_metrics": [
+          {
+            "class_id": 0,
+            "precision": 0.9400826446280992,
+            "recall": 0.9859154929577465,
+            "f1": 0.9624537281861449,
+            "support": 923
+          },
+          {
+            "class_id": 1,
+            "precision": 0.59375,
+            "recall": 0.24675324675324675,
+            "f1": 0.3486238532110092,
+            "support": 77
+          }
+        ],
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.3486238532110092,
+        "validation_f1_minority": 0.3486238532110092,
+        "validation_minority_precision": 0.59375,
+        "validation_minority_recall": 0.24675324675324675
+      }
+    ],
+    "best_experiment_id": "exp_001",
+    "model_calls": 2,
+    "reported_local_tokens": {
+      "prompt": 1355,
+      "completion": 48
+    },
+    "cloud_calls": 0,
+    "reported_cloud_tokens": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0
+    },
+    "cloud_usage_complete": true,
+    "cloud_cost": null,
+    "jev_calls": 0,
+    "escalation_gate": {
+      "source": "rules",
+      "allow_cloud": null,
+      "reason": "not_evaluated"
+    },
+    "total_remote_calls": 0,
+    "jev_cost": null,
+    "planning_policy": "context_v2",
+    "training_profile": {
+      "scope": "training_only",
+      "rows": 3000,
+      "features": 20,
+      "numeric_features": 18,
+      "categorical_features": 2,
+      "missing_fraction": 0.011883333333333333,
+      "constant_features": 0,
+      "class_count": 2,
+      "class_counts": [
+        {
+          "class_id": 0,
+          "count": 2767
+        },
+        {
+          "class_id": 1,
+          "count": 233
+        }
+      ],
+      "class_counts_truncated": false,
+      "selection_metric": "f1_minority",
+      "positive_class_id": 1
+    },
+    "elapsed_seconds": 4.079844200001389,
+    "events": [
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_001",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000
+          },
+          "seed": 44,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.6593450538382926,
+          "validation_accuracy": 0.931,
+          "duration_seconds": 0.037972799997078255,
+          "validation_class_metrics": [
+            {
+              "class_id": 0,
+              "precision": 0.9402061855670103,
+              "recall": 0.9880823401950163,
+              "f1": 0.9635499207606973,
+              "support": 923
+            },
+            {
+              "class_id": 1,
+              "precision": 0.6333333333333333,
+              "recall": 0.24675324675324675,
+              "f1": 0.35514018691588783,
+              "support": 77
+            }
+          ],
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.35514018691588783,
+          "validation_f1_minority": 0.35514018691588783,
+          "validation_minority_precision": 0.6333333333333333,
+          "validation_minority_recall": 0.24675324675324675
+        }
+      },
+      {
+        "event": "proposal_accepted",
+        "attempt": 1,
+        "proposal": {
+          "model": "logistic_regression",
+          "parameters": {
+            "C": 10,
+            "max_iter": 1000
+          }
+        }
+      },
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_002",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000,
+            "C": 10
+          },
+          "seed": 44,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.655538790698577,
+          "validation_accuracy": 0.929,
+          "duration_seconds": 0.034834899997804314,
+          "validation_class_metrics": [
+            {
+              "class_id": 0,
+              "precision": 0.9400826446280992,
+              "recall": 0.9859154929577465,
+              "f1": 0.9624537281861449,
+              "support": 923
+            },
+            {
+              "class_id": 1,
+              "precision": 0.59375,
+              "recall": 0.24675324675324675,
+              "f1": 0.3486238532110092,
+              "support": 77
+            }
+          ],
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.3486238532110092,
+          "validation_f1_minority": 0.3486238532110092,
+          "validation_minority_precision": 0.59375,
+          "validation_minority_recall": 0.24675324675324675
+        }
+      },
+      {
+        "event": "proposal_rejected",
+        "attempt": 2,
+        "reason": "Invalid or duplicate JSON. Use the exact allowed schema and parameter ranges."
+      },
+      {
+        "event": "research_stopped",
+        "status": "escalation_required",
+        "reason": "local_call_budget"
+      }
+    ],
+    "test_evaluated": false
+  }
+}

@@ -1,0 +1,376 @@
+{
+  "task": "t2_imbalanced",
+  "seed": 44,
+  "arm": "qwen_3b",
+  "model": "qwen2.5:3b-instruct-q4_K_M",
+  "endpoint": "http://127.0.0.1:11434",
+  "metric": "f1_minority",
+  "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+  "split_sha256": "99b008f8aaf6d6b19e1a110e44637a5b846c5b933825871ff8235da5c5054b3b",
+  "budget": {
+    "max_experiments": 3,
+    "max_calls": 2,
+    "max_seconds": 60
+  },
+  "elapsed_seconds": 1.2802730000003066,
+  "best_score": 0.5276073619631901,
+  "best_experiment_id": "exp_002",
+  "training_attempts": 3,
+  "test_evaluated": false,
+  "report": {
+    "status": "completed",
+    "stop_reason": "experiment_budget",
+    "experiments": [
+      {
+        "status": "success",
+        "experiment_id": "exp_001",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000
+        },
+        "seed": 44,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.6593450538382926,
+        "validation_accuracy": 0.931,
+        "duration_seconds": 0.039663899999140995,
+        "validation_class_metrics": [
+          {
+            "class_id": 0,
+            "precision": 0.9402061855670103,
+            "recall": 0.9880823401950163,
+            "f1": 0.9635499207606973,
+            "support": 923
+          },
+          {
+            "class_id": 1,
+            "precision": 0.6333333333333333,
+            "recall": 0.24675324675324675,
+            "f1": 0.35514018691588783,
+            "support": 77
+          }
+        ],
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.35514018691588783,
+        "validation_f1_minority": 0.35514018691588783,
+        "validation_minority_precision": 0.6333333333333333,
+        "validation_minority_recall": 0.24675324675324675
+      },
+      {
+        "status": "success",
+        "experiment_id": "exp_002",
+        "model": "random_forest",
+        "parameters": {
+          "n_estimators": 50,
+          "max_depth": 10,
+          "min_samples_leaf": 2,
+          "class_weight": "balanced"
+        },
+        "seed": 44,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.7428455971492598,
+        "validation_accuracy": 0.923,
+        "duration_seconds": 0.2073220999991463,
+        "validation_class_metrics": [
+          {
+            "class_id": 0,
+            "precision": 0.962800875273523,
+            "recall": 0.9534127843986999,
+            "f1": 0.9580838323353293,
+            "support": 923
+          },
+          {
+            "class_id": 1,
+            "precision": 0.5,
+            "recall": 0.5584415584415584,
+            "f1": 0.5276073619631901,
+            "support": 77
+          }
+        ],
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.5276073619631901,
+        "validation_f1_minority": 0.5276073619631901,
+        "validation_minority_precision": 0.5,
+        "validation_minority_recall": 0.5584415584415584
+      },
+      {
+        "status": "success",
+        "experiment_id": "exp_003",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000,
+          "C": 10,
+          "class_weight": "balanced"
+        },
+        "seed": 44,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.5801290550693892,
+        "validation_accuracy": 0.772,
+        "duration_seconds": 0.03972989999965648,
+        "validation_class_metrics": [
+          {
+            "class_id": 0,
+            "precision": 0.9614873837981408,
+            "recall": 0.7843986998916577,
+            "f1": 0.863961813842482,
+            "support": 923
+          },
+          {
+            "class_id": 1,
+            "precision": 0.19433198380566802,
+            "recall": 0.6233766233766234,
+            "f1": 0.2962962962962963,
+            "support": 77
+          }
+        ],
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.2962962962962963,
+        "validation_f1_minority": 0.2962962962962963,
+        "validation_minority_precision": 0.19433198380566802,
+        "validation_minority_recall": 0.6233766233766234
+      }
+    ],
+    "best_experiment_id": "exp_002",
+    "model_calls": 2,
+    "reported_local_tokens": {
+      "prompt": 1363,
+      "completion": 79
+    },
+    "cloud_calls": 0,
+    "reported_cloud_tokens": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0
+    },
+    "cloud_usage_complete": true,
+    "cloud_cost": null,
+    "jev_calls": 0,
+    "escalation_gate": {
+      "source": "rules",
+      "allow_cloud": null,
+      "reason": "not_evaluated"
+    },
+    "total_remote_calls": 0,
+    "jev_cost": null,
+    "planning_policy": "context_v2",
+    "training_profile": {
+      "scope": "training_only",
+      "rows": 3000,
+      "features": 20,
+      "numeric_features": 18,
+      "categorical_features": 2,
+      "missing_fraction": 0.011883333333333333,
+      "constant_features": 0,
+      "class_count": 2,
+      "class_counts": [
+        {
+          "class_id": 0,
+          "count": 2767
+        },
+        {
+          "class_id": 1,
+          "count": 233
+        }
+      ],
+      "class_counts_truncated": false,
+      "selection_metric": "f1_minority",
+      "positive_class_id": 1
+    },
+    "elapsed_seconds": 1.279972699998325,
+    "events": [
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_001",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000
+          },
+          "seed": 44,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.6593450538382926,
+          "validation_accuracy": 0.931,
+          "duration_seconds": 0.039663899999140995,
+          "validation_class_metrics": [
+            {
+              "class_id": 0,
+              "precision": 0.9402061855670103,
+              "recall": 0.9880823401950163,
+              "f1": 0.9635499207606973,
+              "support": 923
+            },
+            {
+              "class_id": 1,
+              "precision": 0.6333333333333333,
+              "recall": 0.24675324675324675,
+              "f1": 0.35514018691588783,
+              "support": 77
+            }
+          ],
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.35514018691588783,
+          "validation_f1_minority": 0.35514018691588783,
+          "validation_minority_precision": 0.6333333333333333,
+          "validation_minority_recall": 0.24675324675324675
+        }
+      },
+      {
+        "event": "proposal_accepted",
+        "attempt": 1,
+        "proposal": {
+          "model": "random_forest",
+          "parameters": {
+            "n_estimators": 50,
+            "max_depth": 10,
+            "min_samples_leaf": 2,
+            "class_weight": "balanced"
+          }
+        }
+      },
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_002",
+          "model": "random_forest",
+          "parameters": {
+            "n_estimators": 50,
+            "max_depth": 10,
+            "min_samples_leaf": 2,
+            "class_weight": "balanced"
+          },
+          "seed": 44,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.7428455971492598,
+          "validation_accuracy": 0.923,
+          "duration_seconds": 0.2073220999991463,
+          "validation_class_metrics": [
+            {
+              "class_id": 0,
+              "precision": 0.962800875273523,
+              "recall": 0.9534127843986999,
+              "f1": 0.9580838323353293,
+              "support": 923
+            },
+            {
+              "class_id": 1,
+              "precision": 0.5,
+              "recall": 0.5584415584415584,
+              "f1": 0.5276073619631901,
+              "support": 77
+            }
+          ],
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.5276073619631901,
+          "validation_f1_minority": 0.5276073619631901,
+          "validation_minority_precision": 0.5,
+          "validation_minority_recall": 0.5584415584415584
+        }
+      },
+      {
+        "event": "proposal_accepted",
+        "attempt": 2,
+        "proposal": {
+          "model": "logistic_regression",
+          "parameters": {
+            "C": 10,
+            "max_iter": 1000,
+            "class_weight": "balanced"
+          }
+        }
+      },
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_003",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000,
+            "C": 10,
+            "class_weight": "balanced"
+          },
+          "seed": 44,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.5801290550693892,
+          "validation_accuracy": 0.772,
+          "duration_seconds": 0.03972989999965648,
+          "validation_class_metrics": [
+            {
+              "class_id": 0,
+              "precision": 0.9614873837981408,
+              "recall": 0.7843986998916577,
+              "f1": 0.863961813842482,
+              "support": 923
+            },
+            {
+              "class_id": 1,
+              "precision": 0.19433198380566802,
+              "recall": 0.6233766233766234,
+              "f1": 0.2962962962962963,
+              "support": 77
+            }
+          ],
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.2962962962962963,
+          "validation_f1_minority": 0.2962962962962963,
+          "validation_minority_precision": 0.19433198380566802,
+          "validation_minority_recall": 0.6233766233766234
+        }
+      },
+      {
+        "event": "research_stopped",
+        "status": "completed",
+        "reason": "experiment_budget"
+      }
+    ],
+    "test_evaluated": false
+  }
+}

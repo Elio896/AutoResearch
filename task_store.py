@@ -248,6 +248,9 @@ class StoredResearchSession:
     def closed(self):
         return self.store.show(self.task_id)['state'] != 'open'
 
+    def planning_context(self):
+        return self.store._session(self.store.show(self.task_id)).planning_context()
+
     def run(self, model='logistic_regression', parameters=None):
         return self.store.run(self.task_id, model, parameters, research_token=self.research_token)
 

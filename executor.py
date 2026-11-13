@@ -70,10 +70,29 @@ class ResearchSession:
         self.experiments = {}
         self.closed = False
 
+    def planning_context(self):
+        """Bounded aggregate evidence from training rows, with anonymized class IDs."""
+        training = self.x.iloc[self.train_indices]
+        counts = self.y.iloc[self.train_indices].value_counts().sort_index()
+        numeric = len(training.select_dtypes(include='number').columns)
+        return {'scope': 'training_only', 'rows': len(training), 'features': len(training.columns),
+                'numeric_features': numeric, 'categorical_features': len(training.columns) - numeric,
+                'missing_fraction': float(training.isna().sum().sum() / max(1, training.size)),
+                'constant_features': int((training.nunique(dropna=False) <= 1).sum()),
+                'class_count': len(counts),
+                'class_counts': [{'class_id': int(key), 'count': int(value)} for key, value in counts.iloc[:20].items()],
+                'class_counts_truncated': len(counts) > 20,
+                'selection_metric': self.metric,
+                'positive_class_id': self.positive_id if self.metric == 'f1_minority' else None}
+
     def _metrics(self, actual, predictions, prefix):
         from sklearn.metrics import f1_score, precision_score, recall_score
         macro = float(f1_score(actual, predictions, average='macro', zero_division=0))
-        result = {'selection_metric': self.metric, 'pos_label': self.pos_label,
+        from sklearn.metrics import precision_recall_fscore_support
+        import numpy as np
+        labels = np.unique(actual)[:20]
+        precision, recall, f1, support = precision_recall_fscore_support(actual, predictions, labels=labels, zero_division=0)
+        result = {prefix + '_class_metrics': [{'class_id': int(label), 'precision': float(p), 'recall': float(r), 'f1': float(f), 'support': int(n)} for label, p, r, f, n in zip(labels, precision, recall, f1, support)], 'selection_metric': self.metric, 'pos_label': self.pos_label,
                   prefix + '_score': macro}
         if self.metric == 'f1_minority':
             minority = float(f1_score(actual, predictions, pos_label=self.positive_id, zero_division=0))

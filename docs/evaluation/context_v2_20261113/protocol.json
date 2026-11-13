@@ -1,0 +1,48 @@
+{
+  "created_at": "2026-11-13T22:27:05.952148+08:00",
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "tasks": [
+    "t2_imbalanced",
+    "t3_clean"
+  ],
+  "arms": [
+    [
+      "fixed_search",
+      null,
+      null
+    ],
+    [
+      "qwen_0_5b",
+      "http://127.0.0.1:11435",
+      "Qwen2.5-0.5B-Instruct:latest"
+    ],
+    [
+      "qwen_3b",
+      "http://127.0.0.1:11434",
+      "qwen2.5:3b-instruct-q4_K_M"
+    ]
+  ],
+  "budget": {
+    "max_experiments": 3,
+    "max_calls": 2,
+    "max_seconds": 60
+  },
+  "versions": {
+    "numpy": "2.5.4",
+    "pandas": "3.1.1",
+    "scikit-learn": "1.9.1"
+  },
+  "test_evaluated": false,
+  "limits": [
+    "exploratory three seeds only",
+    "equal upper budgets, not necessarily equal actual use",
+    "sequential shared-machine timings include inference and possible model loading; no power measurement",
+    "no cloud/Jev empirical comparison without privately configured credentials",
+    "not five-fold benchmark protocol; do not compare to benchmark thresholds",
+    "t1 intentionally omitted: sentinel and unit cleaning still requires separate design"
+  ]
+}

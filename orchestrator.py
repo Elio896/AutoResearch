@@ -126,6 +126,7 @@ class ResearchOrchestrator:
         calls = no_improvement = 0
         tokens = {'prompt': 0, 'completion': 0}
         feedback = ''
+        context = self.session.planning_context() if hasattr(self.session, 'planning_context') else {}
         def record(kind, **values):
             event = {'event': kind, **values}
             events.append(event)
@@ -155,11 +156,11 @@ class ResearchOrchestrator:
                 status, reason = 'escalation_required', 'validation_plateau'
                 break
             history = [{'model': item['model'], 'parameters': item['parameters'],
-                        'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1'])} for item in experiments[-5:]]
+                        'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1']), 'validation_class_metrics': item.get('validation_class_metrics', [])} for item in experiments[-5:]]
             messages = [
                 {'role': 'system', 'content': 'Propose ONE classifier experiment. Return only a JSON object with model and parameters. No explanation. No test evaluation. Never repeat an experiment.'},
                 {'role': 'user', 'content': 'Allowed: logistic_regression parameters C (0.001..100), max_iter (100..2000), class_weight (null or balanced); random_forest parameters n_estimators (10..200), max_depth (1..20), min_samples_leaf (1..20), class_weight (null or balanced). Example: {"model":"random_forest","parameters":{"max_depth":3,"n_estimators":50}}\nValidation history: '
-                 + json.dumps(history) + '\nLast rejection: ' + feedback},
+                 + json.dumps(history) + '\nTraining profile: ' + json.dumps(context) + '\nResearch guidance: If only one model family has been tried, prioritize an untried model family before more tuning. Use class recall feedback for imbalance. This is guidance, not evidence that a different family will win.\nLast rejection: ' + feedback},
             ]
             calls += 1  # Includes failed, busy, malformed, and duplicate attempts.
             try:
@@ -219,7 +220,7 @@ class ResearchOrchestrator:
                     'remaining_cloud_calls': self.max_cloud_calls,
                     'remaining_seconds': round(max(0, self.max_seconds - (time.monotonic() - started)), 2),
                     'validation_history': [{'model': item['model'], 'parameters': item['parameters'],
-                        'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1'])} for item in experiments[-5:]]}
+                        'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1']), 'validation_class_metrics': item.get('validation_class_metrics', [])} for item in experiments[-5:]]}
                 try:
                     gate_decision = self.jev_gate(gate_state, timeout=min(10, max(0.001,
                         self.max_seconds - (time.monotonic() - started))))
@@ -243,7 +244,7 @@ class ResearchOrchestrator:
                     break
                 # This is a bounded expert recovery proposal, not arbitrary tools or code.
                 history = [{'model': item['model'], 'parameters': item['parameters'],
-                            'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1'])} for item in experiments[-5:]]
+                            'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1']), 'validation_class_metrics': item.get('validation_class_metrics', [])} for item in experiments[-5:]]
                 messages = [
                     {'role': 'system', 'content': 'Diagnose validation stagnation or invalid local proposals. Return JSON only: model and parameters. Select a different bounded experiment, never evaluate test data. Allowed models: logistic_regression (C 0.001..100, max_iter 100..2000, class_weight null or balanced), random_forest (n_estimators 10..200, max_depth 1..20, min_samples_leaf 1..20, class_weight null or balanced).'},
                     {'role': 'user', 'content': json.dumps({'escalation_reason': reason,
@@ -298,6 +299,7 @@ class ResearchOrchestrator:
                   'cloud_cost': None,
                   'jev_calls': jev_calls, 'escalation_gate': gate_decision,
                   'total_remote_calls': cloud_calls + jev_calls, 'jev_cost': None,
+                  'planning_policy': 'context_v2', 'training_profile': context,
                   'elapsed_seconds': time.monotonic() - started, 'events': events,
                   'test_evaluated': False}
         record('research_stopped', status=status, reason=reason)
