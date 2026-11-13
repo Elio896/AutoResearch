@@ -212,6 +212,84 @@ $('confirm-final').onclick = async () => {
   catch (error) { toast(error.message, true); }
   finally { state.busy = false; updateControls(); }
 };
+// ---------- 现场演示：一键跑五角色闭环 ----------
+
+async function runDemo() {
+  const status = document.getElementById('demo-status');
+  const out = document.getElementById('demo-output');
+  if (!status || !out) return;
+  status.textContent = '运行中…';
+  out.hidden = false;
+  out.innerHTML = '<p class="muted">正在跑：画像 → 定基线 → 提方案 → 真实训练 → 评审…</p>';
+  try {
+    const csv = state.csvText || '';
+    const target = state.target || 'target';
+    if (!csv) {
+      out.innerHTML = '<p class="muted">先在上面选一份 CSV（或点「先用鸢尾花数据试一试」），再跑演示。</p>';
+      status.textContent = '缺少数据';
+      return;
+    }
+    const response = await fetch('/research/five-roles', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        csv_text: csv, target, metric: 'f1_minority', pos_label: '1',
+        max_experiments: 3, offline: true,
+      }),
+    });
+    if (!response.ok) {
+      out.innerHTML = `<p class="muted">接口返回 ${response.status}</p>`;
+      status.textContent = '失败';
+      return;
+    }
+    const data = await response.json();
+    const summary = data.summary || {};
+    const rows = (data.experiments || []).map((exp) => {
+      const score = (exp.validation_score ?? exp.validation_f1 ?? 0).toFixed(4);
+      const hypothesis = exp.hypothesis ? ` · ${exp.hypothesis}` : '';
+      return `<li><strong>${exp.model}</strong> · 验证 ${score}${hypothesis}</li>`;
+    }).join('');
+    out.innerHTML = `
+      <div class="demo-summary">
+        <p><strong>状态</strong> ${summary.status} · <strong>停止原因</strong> ${summary.stop_reason}</p>
+        <p><strong>最佳</strong> ${summary.best_model ?? '—'} · <strong>分数</strong> ${(summary.best_score ?? 0).toFixed(4)}</p>
+        <p><strong>版本</strong> ${summary.evoundo_versions ?? 0} 代 · <strong>回滚</strong> ${summary.evoundo_rollbacks ?? 0} 次 · <strong>测试集</strong> ${summary.test_evaluated ? '已评测' : '未触碰'}</p>
+      </div>
+      <ol class="timeline">${rows || '<li class="timeline-empty">没有实验记录</li>'}</ol>`;
+    status.textContent = '完成';
+    await loadVersions();
+  } catch (error) {
+    out.innerHTML = `<p class="muted">演示失败：${error.message}</p>`;
+    status.textContent = '异常';
+  }
+}
+
+async function loadVersions() {
+  const list = document.getElementById('version-list');
+  if (!list) return;
+  try {
+    const response = await fetch('/evoundo/runs');
+    if (!response.ok) return;
+    const data = await response.json();
+    const runs = (data.runs || []).slice(-8).reverse();
+    if (!runs.length) {
+      list.innerHTML = '<li class="timeline-empty">还没有版本树。</li>';
+      return;
+    }
+    list.innerHTML = runs.map((run) => `
+      <li><code>${String(run.run_id).slice(0, 14)}</code>
+        · ${run.versions} 代 · 回滚 ${run.rollbacks}
+        · 最佳 ${(run.best_score ?? 0).toFixed(4)}</li>`).join('');
+  } catch (error) {
+    list.innerHTML = '<li class="timeline-empty">版本树读取失败。</li>';
+  }
+}
+
+const demoButton = document.getElementById('run-demo');
+if (demoButton) demoButton.addEventListener('click', runDemo);
+const versionButton = document.getElementById('load-versions');
+if (versionButton) versionButton.addEventListener('click', loadVersions);
+
 async function initialize() {
   try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review'] || !schema.components?.schemas?.TaskInput?.properties?.metric || !schema.components?.schemas?.ResearchInput?.properties?.baseline_policy || !schema.paths?.['/tasks/{task_id}/export']) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
   catch (error) { state.serverReady = false; updateControls(); $('connection').textContent = '服务未就绪'; toast(error.message || '无法连接后端，请确认本地服务正在运行。', true); }

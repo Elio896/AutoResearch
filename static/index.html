@@ -43,6 +43,11 @@
     </section>
     <section class="card final-card"><div><span class="eyebrow">THE FINAL CHECK</span><h2>完成研究，再打开测试集。</h2><p id="final-explanation">最终评估会选择验证集表现最好的方案，并封存这个任务。</p></div><button id="finalize" class="secondary" disabled>确认最终评估 ↗</button></section>
     </div>
+    <section class="card demo-card"><div class="card-heading"><h2><span class="step-number">04</span>现场演示</h2><span id="demo-status" class="badge">就绪</span></div>
+      <p class="timeline-intro">一键跑完五角色闭环：画像 → 定基线 → 提方案 → 真实训练 → 评审 → 该回滚就回滚。<br><strong>离线模式</strong>不依赖模型服务，断网也能演示。</p>
+      <div class="demo-actions"><button id="run-demo" class="primary" type="button">跑一遍五角色研究 ↗</button><button id="load-versions" class="secondary" type="button">看历史版本树</button></div>
+      <div id="demo-output" class="demo-output" hidden></div>
+      <ol id="version-list" class="timeline"><li class="timeline-empty">跑一次演示，这里会列出每一代版本和回滚情况。</li></ol></section>
     <section class="card timeline-card"><div class="card-heading"><h2><span class="step-number">03</span>研究轨迹</h2><span id="event-count" class="tiny-tag">0 条</span></div><p class="timeline-intro">每一步，保留它的依据。</p><ol id="timeline" class="timeline"><li class="timeline-empty">研究开始后，在这里查看方案、校验结果与停止原因。</li></ol></section>
   </section><footer class="page-footer"><span>EvoResearch / Research in small, verifiable steps.</span><a href="/docs" target="_blank" rel="noopener">接口文档 ↗</a></footer>
 </main>
