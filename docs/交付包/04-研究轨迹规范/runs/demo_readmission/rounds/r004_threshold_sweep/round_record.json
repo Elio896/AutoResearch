@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0",
+  "run_id": "demo_readmission",
+  "round": 4,
+  "round_id": "r004_threshold_sweep",
+  "parent_round_id": "r003_drop_missing_rows",
+  "revision": 1,
+  "started_at": "2026-11-13T20:10:12+08:00",
+  "ended_at": "2026-11-13T20:10:15+08:00",
+  "status": "reverted",
+  "chain": {
+    "algo": "sha256",
+    "prev_hash": "sha256:8c9ce77ec407de77f8a87e7fb46c0994784a0b9ab6efd54325a608401d386e10",
+    "hash": "sha256:a55b94f6c618ed0d13742df9535b479e9a5a283d7428e57dd73c81fd7388a5e9"
+  },
+  "input": {
+    "dataset": "readmission_missing.csv",
+    "sha256": "sha256:fc0d237dcf8a0d97997bc43b3d25c011e621743d91d3360bf7caf6c477a7a894",
+    "rows": 2400,
+    "cols": 15,
+    "target": "readmitted_30d",
+    "pos_rate": 0.2796,
+    "profile": {
+      "missing_rate": {
+        "bmi": 0.114,
+        "hba1c": 0.193,
+        "creatinine": 0.124,
+        "hemoglobin": 0.144,
+        "discharge_disposition": 0.067
+      },
+      "class_counts": {
+        "0": 1729,
+        "1": 671
+      }
+    },
+    "split": {
+      "scheme": "stratified_kfold",
+      "k": 5,
+      "seed": 42,
+      "split_hash": "sha256:00279d51be4c0f0ff2ab909759f969099bcbfe38413ac4af877affb6d1626f0f"
+    }
+  },
+  "hypothesis": {
+    "text": "在 r002 的配置上把决策阈值从 0.5 下移到 F1 最优点，应再挤出一点 F1。",
+    "expected_direction": "up",
+    "falsifier": "若提升小于 MDE（约 0.02），说明阈值不是瓶颈，不采纳以免过拟合验证集。",
+    "confidence_before": 0.4,
+    "authored_by": "demo_script（真实 run 由 Scientist 写入）"
+  },
+  "intervention": {
+    "kind": "threshold",
+    "diff": [
+      {
+        "op": "change",
+        "field": "decision.threshold",
+        "from": 0.5,
+        "to": "argmax_f1(oof)"
+      }
+    ],
+    "unchanged": [
+      "input.sha256",
+      "split",
+      "random_state"
+    ]
+  },
+  "exec": {
+    "command": "OMP_NUM_THREADS=1 python make_demo_run.py",
+    "code_commit": "demo-7f3a1c9",
+    "env_hash": "py3.10-sklearn1.7-numpy2.2-m1",
+    "exit_code": 0,
+    "duration_s": 0.01,
+    "log_path": "runs/demo_readmission/logs/r004_threshold_sweep.log",
+    "stage": "experiment_only"
+  },
+  "result": {
+    "metric": "f1",
+    "value": 0.5551,
+    "per_fold": [
+      0.5048,
+      0.5538,
+      0.5914,
+      0.5796,
+      0.5472
+    ],
+    "std": 0.03,
+    "ci95": [
+      0.5288,
+      0.5814
+    ],
+    "baseline_value": 0.5536,
+    "delta": 0.0015,
+    "mde": 0.0201,
+    "delta_significant": false,
+    "confusion": {
+      "tn": 1273,
+      "fp": 456,
+      "fn": 238,
+      "tp": 433
+    },
+    "secondary": {
+      "pr_auc": 0.563,
+      "roc_auc": 0.7436,
+      "threshold": 0.4922,
+      "n_features": 23
+    }
+  },
+  "validation": {
+    "gates": [
+      {
+        "id": "no_id_column",
+        "pass": true,
+        "detail": "patient_id 已丢弃"
+      },
+      {
+        "id": "split_stratified",
+        "pass": true,
+        "detail": "StratifiedKFold(k=5, seed=42)"
+      },
+      {
+        "id": "metric_is_f1",
+        "pass": true,
+        "detail": "主指标 F1，accuracy 仅作参考"
+      },
+      {
+        "id": "n_features_sane",
+        "pass": true,
+        "detail": "23 个特征"
+      },
+      {
+        "id": "delta_vs_mde",
+        "pass": false,
+        "detail": "Δ=+0.002, MDE=0.0201"
+      }
+    ],
+    "redlines": [],
+    "reverted": true,
+    "restored_from": "r002_class_weight"
+  },
+  "budget": {
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "cost_usd": 0.0,
+    "wall_s": 3.01,
+    "experiments_used": 1,
+    "cumulative": {
+      "tokens": 0,
+      "wall_s": 15.0,
+      "experiments": 5
+    },
+    "cap": {
+      "tokens": 200000,
+      "wall_s": 900,
+      "experiments": 20
+    },
+    "reconciled_with": {
+      "source": "gateway_usage_log",
+      "tokens": 0,
+      "diff": 0
+    }
+  },
+  "conclusion": {
+    "verdict": "reverted",
+    "reason": "F1 0.554 → 0.555，Δ+0.002 < MDE 0.0201，且阈值是在同一批 OOF 上选的，存在乐观偏差。不采纳，回滚到 r002。",
+    "next_hypothesis": "改用 HistGradientBoosting 吃掉非线性交互；并把阈值选择改成嵌套 CV。",
+    "carry_over": []
+  },
+  "ext": {
+    "demo": true,
+    "note": "由 make_demo_run.py 生成：只跑执行器，未接 LLM，故 token=0。数字为真实运行结果。"
+  }
+}
