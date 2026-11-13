@@ -38,14 +38,16 @@ def validate_proposal(text):
     fields = {
         'logistic_regression': {'C', 'max_iter', 'class_weight'},
         'random_forest': {'n_estimators', 'max_depth', 'min_samples_leaf', 'class_weight'},
+        'hist_gradient_boosting': {'max_iter', 'max_depth', 'min_samples_leaf',
+                                   'learning_rate', 'class_weight'},
     }
     if not isinstance(model, str) or model not in fields or type(parameters) is not dict:
         raise ValueError('Unsupported model or invalid parameters object.')
     if set(parameters) - fields[model]:
         raise ValueError('Parameter does not belong to this model.')
-    ranges = {'C': (0.001, 100, False), 'max_iter': (100, 2000, True),
+    ranges = {'C': (0.001, 100, False), 'max_iter': (10, 2000, True),
               'n_estimators': (10, 200, True), 'max_depth': (1, 20, True),
-              'min_samples_leaf': (1, 20, True)}
+              'min_samples_leaf': (1, 20, True), 'learning_rate': (0.01, 0.5, False)}
     for key, value in parameters.items():
         if key == 'class_weight':
             if value is not None and value != 'balanced':
@@ -69,7 +71,10 @@ class LocalQwenClient:
         self.max_output_tokens = max_output_tokens
 
     def __call__(self, messages, timeout):
+        # format='json' 走 Ollama 的受限解码：把"输出必须是 JSON"交给解码器，
+        # 而不是靠提示词祈祷。小模型上这一步的收益最大（实测 3B 提不出合法 JSON）。
         body = json.dumps({'model': self.model, 'messages': messages, 'stream': False,
+                           'format': 'json',
                            'options': {'num_predict': self.max_output_tokens}}).encode('utf-8')
         req = request.Request(self.url, data=body, headers={'Content-Type': 'application/json'})
         # Do not send localhost traffic through system HTTP proxies.
@@ -139,13 +144,23 @@ class ResearchOrchestrator:
             result = self.session.run(**proposal)
             experiments.append(result)
             defaults = {'logistic_regression': {'max_iter': 1000},
-                        'random_forest': {'n_estimators': 100}}
+                        'random_forest': {'n_estimators': 100},
+                        'hist_gradient_boosting': {'max_iter': 100}}
             canonical = {'model': proposal['model'],
                          'parameters': {**defaults[proposal['model']], **proposal['parameters']}}
             seen.add(json.dumps(canonical, sort_keys=True))
             record('experiment', result=result)
             return result
-        best = train({'model': 'logistic_regression', 'parameters': {}})
+        # 确定性基线：训练集类别不平衡时，直接带 class_weight='balanced'。
+        # 这是 Profiler 该做的确定性判断，不该让小模型去猜（t2 上之前就输在这）。
+        _counts = context.get('class_counts') or []
+        _total = sum(int(c.get('count', 0)) for c in _counts)
+        _minority = min((int(c.get('count', 0)) for c in _counts), default=_total)
+        _imbalanced = _total > 0 and (_minority / _total) < 0.2
+        baseline_params = {'class_weight': 'balanced'} if _imbalanced else {}
+        best = train({'model': 'logistic_regression', 'parameters': baseline_params})
+        record('baseline_context', imbalanced=_imbalanced,
+               minority_fraction=round(_minority / _total, 4) if _total else None)
         status, reason = 'completed', 'experiment_budget'
         record('baseline_policy', policy=self.baseline_policy)
         if self.baseline_policy == 'fixed_search':
@@ -180,7 +195,7 @@ class ResearchOrchestrator:
                         'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1']), 'validation_class_metrics': item.get('validation_class_metrics', [])} for item in experiments[-5:]]
             messages = [
                 {'role': 'system', 'content': 'Propose ONE classifier experiment. Return only a JSON object with model and parameters. No explanation. No test evaluation. Never repeat an experiment.'},
-                {'role': 'user', 'content': 'Allowed: logistic_regression parameters C (0.001..100), max_iter (100..2000), class_weight (null or balanced); random_forest parameters n_estimators (10..200), max_depth (1..20), min_samples_leaf (1..20), class_weight (null or balanced). Example: {"model":"random_forest","parameters":{"max_depth":3,"n_estimators":50}}\nValidation history: '
+                {'role': 'user', 'content': 'Allowed: logistic_regression parameters C (0.001..100), max_iter (100..2000), class_weight (null or balanced); random_forest parameters n_estimators (10..200), max_depth (1..20), min_samples_leaf (1..20), class_weight (null or balanced); hist_gradient_boosting parameters max_iter (10..500), max_depth (2..20), min_samples_leaf (1..20), learning_rate (0.01..0.5), class_weight (null or balanced). Example: {"model":"random_forest","parameters":{"max_depth":3,"n_estimators":50}}\nValidation history: '
                  + json.dumps(history) + '\nTraining profile: ' + json.dumps(context) + '\nResearch guidance: If only one model family has been tried, prioritize an untried model family before more tuning. Use class recall feedback for imbalance. This is guidance, not evidence that a different family will win.\nLast rejection: ' + feedback},
             ]
             calls += 1  # Includes failed, busy, malformed, and duplicate attempts.
@@ -192,7 +207,7 @@ class ResearchOrchestrator:
                         tokens[key] += value
                 content = response.get('message', {}).get('content')
                 proposal = validate_proposal(content)
-                defaults = {'logistic_regression': {'max_iter': 1000}, 'random_forest': {'n_estimators': 100}}
+                defaults = {'logistic_regression': {'max_iter': 1000}, 'random_forest': {'n_estimators': 100}, 'hist_gradient_boosting': {'max_iter': 100}}
                 canonical = {'model': proposal['model'], 'parameters': {**defaults[proposal['model']], **proposal['parameters']}}
                 if json.dumps(canonical, sort_keys=True) in seen:
                     raise ValueError('Duplicate experiment; choose different parameters.')
@@ -275,7 +290,7 @@ class ResearchOrchestrator:
                 try:
                     content = self.cloud_proposer(messages, timeout=min(30, remaining))
                     proposal = validate_proposal(content)
-                    defaults = {'logistic_regression': {'max_iter': 1000}, 'random_forest': {'n_estimators': 100}}
+                    defaults = {'logistic_regression': {'max_iter': 1000}, 'random_forest': {'n_estimators': 100}, 'hist_gradient_boosting': {'max_iter': 100}}
                     canonical = {'model': proposal['model'], 'parameters': {**defaults[proposal['model']], **proposal['parameters']}}
                     if json.dumps(canonical, sort_keys=True) in seen:
                         raise ValueError('Duplicate cloud proposal.')

@@ -175,3 +175,52 @@ Rule eligibility still checks remaining experiments, cloud budget and time BEFOR
 Reports: jev_calls, cloud_calls (DeepSeek), total_remote_calls, escalation_gate (source, probability/threshold/model/reported usage); jev_cost/cloud_cost null means unknown, not free. No claimed budget/quality improvement yet.
 Full suite .venv\Scripts\python.exe -W error::ResourceWarning -m unittest discover -s tests -v: 40/40 passed. Temporary loopback protocol + HTTP failure tests, reject/allow/fallback and hard-budget precedence use actual sklearn training; holdout not accessed by gate. py_compile, CLI --help and PowerShell AST parse passed. Existing Starlette/httpx deprecation warning unchanged.
 Web remains local-only; paid gates are CLI only. Earlier EvoResearch_GitHub_20261113.zip predates this adapter and is NOT updated. Next: user can privately configure keys and verify a real request, then compare rule vs Jev gating under matched budget before claiming savings. Existing 34-test integrity guard unchanged.
+
+
+## Task objective alignment 2026-11-13 (codex)
+
+Added immutable f1_macro/f1_minority task objective and explicit training-minority label validation; SQLite migration/defaults, executor diagnostics, local/cloud improvement checks, durable final winner and UI use selected score. Full suite 42/42 passed; focused objective-disagreement final-selection regression passed. No paid API calls, no benchmark changes; browser visual verification and running-server reload not performed.
+New API TaskInput metric and pos_label; CLI executor/orchestrator/task_store create --metric f1_minority --pos-label 1. Existing tasks default macro, historical scores untouched. validation_f1/test_f1 remain macro; validation_score/test_score are selected objective. Minority precision/recall/F1 included for minority objective. Training minority checked without inspecting test performance. UI caption names objective, old schema blocks mutation; restart API required. GitHub and previous ZIP not updated this turn.
+
+
+## Live objective HTTP verification 2026-11-13 (codex)
+Live 8002 HTTP t2 objective verification passed: logreg minority validation F1 .3541667, RF balanced .6141732; final selects exp_002, minority test F1 .6141732, precision .78, recall .5064935, accuracy .951. Duplicate finalize 409. 42 tests pass; no model API calls; not five-fold CV. Backend restarted PID19828; visual browser unverified.
+Evidence artifacts/metric_http_verification.json, reproducible tools/verify_metric_http.py. This run is manual executor/API verification, not proof of autonomous reasoning or Jev live credentials.
+
+
+## v2 delivery checkpoint 2026-11-13 (codex)
+Created v2 ZIP 83 files 1034385 bytes SHA256 dd8487f938256b751770784d0ec3b9c1801746598830f2e4fe058e72512e3414, staged independent suite 42/42 passed. Saved deliverable libfile_e5cd0a84f1e881919a5330dc4f490714. Local commit 854ec8e contains metric update + HTTP verification script. Git push failed credential-manager MSYS access error; connected GitHub get_repo returns404 so remote NOT updated. No credential extraction attempted. Existing v0.1.0 release/old ZIP unchanged.
+Backend session9881 PID19828 on8002. Live HTTP evidence uses real t2, two manual experiments, exactly one final holdout. Browser visual review remains unverified. Next substantive work: matched-budget autonomous local-only vs rules/cloud/Jev comparison; real Jev auth still unverified and should use private environment credentials.
+
+
+## Local strategy comparison 2026-11-13 (codex)
+Completed18 matched-cap runs t2/t3 seeds42,43,44 fixed vsQwen0.5/3B.24local calls,0remote,0holdout. t2 meanF1 fixed .585389 vs bothAgent .390282; t3 .993747 vs .987493. No Agent advantage shown. Evidence docs/evaluation/local_policy_20261113; next work training-only profile/diversity, do not overwrite benchmark.
+No core runtime changes. No new dependencies. Existing ZIP/GitHub remote not updated. Current local defaults preserved. All18 split fingerprints match across arms.
+
+
+## Planning context v2 verified 2026-11-13 (codex)
+context_v2 verified44/44 tests;18 development comparison runs24local calls0paid0test. Qwen3B t2 meanminorityF1 .390282->.550792 but belowfixed .585389; t3unchanged. Training-only anonymized bounded aggregates, validation-class metrics, advisoryfamilydiversity, noforcedRF. Real8002 autonomous API task18264fe4e24f4b16a41549e99dd9f23f confirmsprofile throughStoredSession,1local call,noholdout. Newserver session57084; default0.5B unchanged. Reports docs/evaluation/context_v2_20261113; noZIPorremote update.
+Regression red-before-green documented in tests/test_planning_context.py. Same development datasets are reused so these scores are not independent generalization evidence; do not lower benchmarks or claim Jev/cloud cost advantage. No dependencies installed. Next freeze policy and evaluate unseen datasets; web3B selectable configuration is still not implemented.
+
+
+## Frozen transfer + opt-in baseline policy 2026-11-13 (codex)
+Frozen transfer18runs finished,18lockedtestclaims; Wine testmacroF1 .981188 tie, imbalance fixed .404710 vs3B .299208, mixed .892233 vs .820388. Preserved docs/evaluation/frozen_transfer_20261113. Added opt-in baseline_policy fixed_search acrossCLI/API/jobs/UI, defaultlogregretained;3trialbaseline0LLMcalls and4trial1Agentcall covered.47/47tests pass. Live8002 HTTP task55f0b36ef2d94ba4877ec820784c548d confirms3fits0modelcalls/noholdout. No newpackages,paidrequests orremoteupdates.
+Baseline safeguards validation only when fullplan succeeds withinbudget; no test-score guarantee. Server36828/session1536 on8002, browservisualunverified. Existingv2ZIP predates context_v2/baselinepolicy, notupdated. Next freeze hybrid and obtain fresh realdatasets for enterprise demo; do not repeatedly retune consumedholdouts.
+
+
+## Research evidence export 2026-11-13 (codex)
+Read-only evidence export implemented: GET/tasks/{id}/export formatmarkdown/json/zip pluswebbuttons. ZIP REPORT.md/manifest.json/replay_validation.py, serverCSVpaths+jobtokens omitted; sources rule/local/cloud/manual/unresolved, unknowncostnotzero, activejobs409, leakagewarningblocksbestconclusion.52/52tests passed, redtests404beforeimplementation, replay script reproduced3validation scores andnoholdout. Real8002 HTTP allformats200 task55f0b36ef2d94ba4877ec820784c548d, stateidenticalbeforeafter,0exportmodelcalls. No dependencies/paidcalls; no pretrainedmodelartifact orCSV bundled.
+Serversession28995 port8002. Browservisualverification remains unverified. Original historical task source revisions are not persisted, so exports disclose cross-code reproducibility limitation. Newmodule research_export.py must be included in future projectZIP; existingv2ZIP is stale. RemoteGitHub unchanged. Read-only HTTP evidence artifacts/export_http_verification.json.
+
+
+## Source package v3 2026-11-13 (codex)
+Delivered EvoResearch_GitHub_20261113_v3.zip source4f37805;175files1485908bytes SHA256894777b95a5d69fbcca9be2d46e3e3cba01b8704c9b470e3ded071d3ca1a02f4. Independent staging52/52tests passed,ZIP CRC+allfilehashes verified,secretpatterns no matches. Excludesenv/credentials/venv/git/privatehandoffs/logs/databases. Includescontext_v2/baselinepolicy/reportexports/Jevgate/evaluationevidence/dependencylock/START_HERE. Saved libfile_7c60052b01e48191ac9acc4ef4ac1fc3. NoGitHubpush,no paidcalls,no fresh dependencyinstall orbrowservisualverification.
+Replaces older v2 as user-facing downloadable source snapshot. Cloud helper usage in START_HERE passes -Csv bench/tasks/t3_clean/data.csv explicitly because original helper default data/iris.csv is not bundled. Generic separatelycontributed jev_client.py omitted (not a dependency of jev_router). Source/inference defaults unchanged.
+
+
+## Jev live authentication check 2026-11-13 (codex)
+One explicitly requested real request returned HTTP401. Not connected. Key was input by hidden stdin and kept only in the terminated process; do not copy any secret from conversation to files. No retries or model-success claim. tools/verify_jev_live.py prompts without echo; next step user replaces exposed credential privately, then runs helper. Existing serving behavior remains unchanged.
+
+
+## Jev real connection succeeded 2026-11-13 (codex)
+New user-provided credential passed one real call: jev-1.14.0,348 input/24 outputreportedtokens, probability0.51 for connectivity state. No secret persisted. Process ended, so CLI/web do not retain this key. This validates authentication and inference only, not whole research gate, financial cost or effectiveness.

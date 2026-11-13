@@ -108,7 +108,7 @@ class ResearchSession:
 
     def run(self, model='logistic_regression', parameters=None):
         from sklearn.compose import ColumnTransformer
-        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
         from sklearn.impute import SimpleImputer
         from sklearn.linear_model import LogisticRegression
         from sklearn.metrics import accuracy_score, f1_score
@@ -122,12 +122,19 @@ class ResearchSession:
         allowed = {
             'logistic_regression': {'C', 'class_weight', 'max_iter'},
             'random_forest': {'n_estimators', 'max_depth', 'min_samples_leaf', 'class_weight'},
+            'hist_gradient_boosting': {'max_iter', 'max_depth', 'min_samples_leaf',
+                                       'learning_rate', 'class_weight'},
         }
         if model not in allowed or set(parameters) - allowed[model]:
             raise ValueError('Unsupported model or parameters.')
         if model == 'logistic_regression':
             options = {'max_iter': 1000, **parameters}
             estimator = LogisticRegression(random_state=self.seed, **options)
+        elif model == 'hist_gradient_boosting':
+            options = {'max_iter': 100, **parameters}
+            if not 1 <= options['max_iter'] <= 1000:
+                raise ValueError('max_iter must be between 1 and 1000.')
+            estimator = HistGradientBoostingClassifier(random_state=self.seed, **options)
         else:
             options = {'n_estimators': 100, **parameters}
             if not 1 <= options['n_estimators'] <= 500:
