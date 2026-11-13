@@ -62,7 +62,8 @@ class ResearchLoop:
                  allowed: dict | None = None, patience: int = 2, emit=None,
                  experience: ExperienceStore | None = None, task_name: str = '',
                  trajectory_dir: str | Path | None = None, run_id: str | None = None,
-                 small_proposer=None):
+                 small_proposer=None, cloud_proposer=None, jev_gate=None,
+                 max_cloud_calls: int = 0):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -81,6 +82,10 @@ class ResearchLoop:
         # 红蓝对抗：结束前质疑一次最优结果（可关）
         # 红队可以用更小的模型——找茬比提方案简单，这是成本分层的第一刀
         self.redteam = RedTeam(small_proposer or proposer) if (small_proposer or proposer) else None
+        # 云端兜底：本地卡住时，由 JEV 判值不值得花钱，值得才升级
+        self.cloud_scientist = Scientist(cloud_proposer, self.allowed) if cloud_proposer else None
+        self.jev_gate = jev_gate
+        self.max_cloud_calls = max_cloud_calls
         self.blueteam = BlueTeam()
         self.run_id = run_id or uuid.uuid4().hex
         self.trajectory = TrajectoryWriter(
@@ -149,6 +154,11 @@ class ResearchLoop:
             self.used['seconds'] = time.monotonic() - started
             stop, reason = self.manager.should_stop({**self.used, 'no_improvement': no_improvement})
             if stop:
+                # 本地卡在平台期时，先问 JEV「这次花钱值不值」，值得才升级
+                if reason == 'validation_plateau' and self.cloud_scientist is not None:
+                    if self._try_escalate(best, profile, started):
+                        no_improvement = 0
+                        continue
                 stop_reason = reason
                 break
 
@@ -225,6 +235,83 @@ class ResearchLoop:
         # 收工前让红队试一次：这个"最优"经不经得起换 seed 的检验
         self._adversarial_check(best, profile)
         return self._finish('completed', stop_reason, started)
+
+    def _try_escalate(self, best: dict | None, profile: dict, started: float) -> bool:
+        """本地卡在平台期。先问 JEV 值不值得花钱，值得才让云端出一个方案。
+
+        返回 True 表示"真的升级并跑了一次实验"（调用方继续循环），
+        False 表示没升级（调用方按原计划收工）。
+        """
+        if best is None:
+            return False
+        if self.used['cloud_calls'] >= self.max_cloud_calls:
+            self._record('escalation_blocked', reason='cloud_budget',
+                         used=self.used['cloud_calls'], cap=self.max_cloud_calls)
+            return False
+
+        # 1) JEV 判据：这一步本身就是"该不该花云端钱"的证据
+        if self.jev_gate is not None:
+            state = {
+                'task': self.task_name,
+                'trigger': 'validation_plateau',
+                'experiments_used': self.used['experiments'],
+                'local_calls_used': self.used['local_calls'],
+                'best_validation_score': float(best.get('validation_score', best.get('validation_f1', 0.0))),
+                'recent_scores': [round(float(r.get('validation_score', r.get('validation_f1', 0.0))), 4)
+                                  for r in self._experiments[-4:]],
+                'remaining_cloud_calls': self.max_cloud_calls - self.used['cloud_calls'],
+            }
+            try:
+                decision = self.jev_gate(state, timeout=max(5.0, min(45.0, self.budget.max_seconds - (time.monotonic() - started))))
+            except Exception as exc:                    # noqa: BLE001
+                self._record('jev_error', reason=str(exc)[:200])
+                return False
+            allow = bool(decision.get('allow_cloud'))
+            self._record('jev_decision', allow_cloud=allow,
+                         source=decision.get('source'),
+                         probability=decision.get('probability'),
+                         threshold=decision.get('threshold'),
+                         model=decision.get('model'),
+                         usage=decision.get('usage') or {})
+            if not allow:
+                return False
+
+        # 2) 真的调云端提一个方案
+        history = [{'model': r.get('model'), 'parameters': r.get('parameters'),
+                    'score': r.get('validation_score', r.get('validation_f1'))}
+                   for r in self._experiments[-5:]]
+        remaining = self.budget.max_seconds - (time.monotonic() - started)
+        self._spend(cloud_calls=1)
+        try:
+            proposal = self.cloud_scientist.propose(history, profile,
+                                                    timeout=max(5.0, min(60.0, remaining)))
+        except Exception as exc:                        # noqa: BLE001
+            self._record('cloud_error', reason=str(exc)[:200])
+            return False
+
+        self._record('cloud_proposal', proposal=proposal,
+                     tokens=self.cloud_scientist.last_tokens.copy())
+        result = self._run_experiment(proposal)
+        if result is None:
+            return False
+
+        verdict = self.reviewer.judge(result, best, profile)
+        self._record('reviewer_verdict', verdict=verdict,
+                     budget=self.budget.snapshot(self.used), source='cloud')
+        version = self.chain.add(
+            proposal={'model': result.get('model'), 'parameters': result.get('parameters') or {}},
+            score=float(result.get('validation_score', result.get('validation_f1', 0.0))),
+            note='cloud:' + verdict['verdict'])
+        if verdict['verdict'] in ('improved', 'kept') and not verdict.get('reverted', False):
+            self._record('escalation_success', from_score=verdict['best_score'],
+                         to_score=verdict['candidate_score'], delta=verdict['delta'])
+            return True
+        target = self.chain.best()
+        if target is not None and target.version_id != self.chain.current_id:
+            self.chain.rollback(target.version_id, reason='cloud_attempt_regressed')
+            self._record('rollback', from_version=version.version_id,
+                         to_version=target.version_id, reason='cloud_attempt_regressed')
+        return False
 
     def _adversarial_check(self, best: dict | None, profile: dict) -> None:
         """红队质疑 → 蓝队用代码检验 → 成立就回滚。全程不让模型判好坏。"""

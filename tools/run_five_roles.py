@@ -34,6 +34,9 @@ def main():
     p.add_argument('--max-local-calls', type=int, default=6)
     p.add_argument('--max-local-tokens', type=int, default=20000)
     p.add_argument('--patience', type=int, default=2)
+    p.add_argument('--enable-cloud', action='store_true', help='本地卡住时允许调云端（需 DEEPSEEK_API_KEY）')
+    p.add_argument('--max-cloud-calls', type=int, default=1)
+    p.add_argument('--enable-jev', action='store_true', help='云端升级前先问 JEV 值不值得（需 TYPESAFE_API_KEY）')
     p.add_argument('--experience', default='', help='经验库 jsonl 路径（留空则不启用）')
     p.add_argument('--task-name', default='')
     p.add_argument('--output')
@@ -53,11 +56,29 @@ def main():
                               'experiment', 'reviewer_verdict', 'finish'):
             print(json.dumps(event, ensure_ascii=False)[:300], flush=True)
 
+    # 云端兜底：本地卡住时才用，而且先过 JEV
+    cloud_proposer = None
+    jev_gate = None
+    if args.enable_cloud:
+        import os
+        from cloud_provider import DeepSeekClient
+        key = os.environ.get('DEEPSEEK_API_KEY', '').strip()
+        if key:
+            cloud_proposer = DeepSeekClient(key)
+        else:
+            print('warning: --enable-cloud 但环境里没有 DEEPSEEK_API_KEY，跳过')
+    if args.enable_jev:
+        from jev_router import JevGate
+        jev_gate = JevGate.auto()
+
     loop = ResearchLoop(session, proposer=proposer, budget=budget,
                         patience=args.patience, emit=emit,
                         experience=ExperienceStore(args.experience) if args.experience else None,
                         task_name=args.task_name or Path(args.csv).stem,
-                        small_proposer=small_proposer)
+                        small_proposer=small_proposer,
+                        cloud_proposer=cloud_proposer,
+                        jev_gate=jev_gate,
+                        max_cloud_calls=args.max_cloud_calls)
     result = loop.run()
 
     print('\n=== summary ===')

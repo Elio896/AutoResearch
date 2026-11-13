@@ -179,6 +179,9 @@ class Scientist:
              f'{advice_text}'},
         ]
         response = self.proposer(messages, timeout=timeout)
+        # 本地 Ollama 返回 dict（带 prompt_eval_count），云端适配器可能直接回字符串
+        if isinstance(response, str):
+            response = {'message': {'content': response}}
         # 先记 token：即使解析失败，这次调用的成本也已经发生了。
         self.last_tokens = {
             'prompt': int(response.get('prompt_eval_count', 0) or 0),
