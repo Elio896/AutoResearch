@@ -1,4 +1,6 @@
 'use strict';
+const selectedScore = result => result.validation_score ?? result.validation_f1;
+const finalScore = result => result.test_score ?? result.test_f1;
 const $ = id => document.getElementById(id);
 const state = {csv: '', task: null, selected: localStorage.getItem('evoresearch-task') || '', busy: false, refreshing: false, serverReady: false};
 const reasons = {experiment_budget: '实验预算已用完，保留验证集表现最好的方案。', local_call_budget: '本地调用预算已用完，需要进一步诊断。', validation_plateau: '验证指标连续未改善，需要进一步诊断。', local_unavailable: '本地模型暂不可用，已保留现有结果。', time_budget: '时间预算已用完，停止发起新工作。', experiment_failed: '候选训练失败，请查看实验记录。'};
@@ -81,8 +83,8 @@ function render(task) {
   $('existing-task-controls').hidden = false;
   $('existing-task-hint').textContent = task.experiments.length > 0 ? '此任务已有实验。自主研究必须从新任务开始，请在左侧新建。' : risk?.blocked ? '处理完风险后，可启动这个已保存的任务。' : task.research_job ? '该任务已启动过自主研究，可查看完整轨迹。' : '这是未运行的任务，可以直接启动；实验次数沿用创建时预算。';
   const successful = task.experiments.filter(exp => exp.status === 'success');
-  const best = successful.reduce((a, b) => !a || b.result.validation_f1 > a.result.validation_f1 ? b : a, null);
-  $('best-score').textContent = best ? best.result.validation_f1.toFixed(4) : '—';
+  const best = successful.reduce((a, b) => !a || selectedScore(b.result) > selectedScore(a.result) ? b : a, null);
+  $('best-score').textContent = best ? selectedScore(best.result).toFixed(4) : '—';
   $('best-model').textContent = best ? `${best.result.experiment_id} · ${modelNames[best.result.model] || best.result.model}` : '等待第一份实验结果';
   if (task.legacy_results_at_risk) { $('best-score').textContent = '待复核'; $('best-model').textContent = '历史指标保留，不能直接作为研究结论'; }
   $('experiment-count').replaceChildren(document.createTextNode(`${task.experiments.length} `), element('em', `/ ${task.max_experiments}`));
@@ -91,16 +93,16 @@ function render(task) {
   $('model-calls').textContent = report?.model_calls ?? attempts;
   $('token-count').textContent = report ? `输入 ${report.reported_local_tokens?.prompt || 0} / 输出 ${report.reported_local_tokens?.completion || 0} tokens` : activeJob(task) ? '本地提案中 · 等待完整用量' : '尚无完整调用记录';
   $('test-state').textContent = task.state === 'finalized' ? '已评估' : task.state === 'open' ? '已隔离' : '已锁定';
-  $('test-detail').textContent = task.final_result ? `最终测试 F1 ${task.final_result.test_f1.toFixed(4)}` : task.state === 'open' ? '未用于研究迭代' : '最终评估已锁定，不能重试';
+  $('test-detail').textContent = task.final_result ? `最终测试 F1 ${finalScore(task.final_result).toFixed(4)}` : task.state === 'open' ? '未用于研究迭代' : '最终评估已锁定，不能重试';
   if (task.legacy_results_at_risk) { $('test-state').textContent = '结果有风险'; $('test-detail').textContent = '历史评估保留，不作为可靠结论'; }
   const status = risk?.blocked ? '需审核数据风险' : task.state === 'finalized' ? '已封存' : activeJob(task) ? '研究进行中' : report?.status === 'escalation_required' ? '需要进一步诊断' : report ? '研究已完成' : task.research_job?.state === 'failed' ? '研究中断' : '等待开始';
   $('run-status').textContent = status; $('run-status').className = 'badge' + (activeJob(task) ? ' running' : status === '需要进一步诊断' || status === '研究中断' ? ' warning' : '');
   $('empty-results').hidden = task.experiments.length > 0; $('results-content').hidden = !task.experiments.length;
-  $('task-caption').textContent = `任务 ${task.id.slice(0, 8)} · 预测 ${task.target} · 固定随机种子 ${task.seed}`;
+  $('task-caption').textContent = `任务 ${task.id.slice(0, 8)} · 预测 ${task.target} · ${task.metric === 'f1_minority' ? '少数类 F1 / 标签 ' + task.pos_label : '宏平均 F1'} · 固定随机种子 ${task.seed}`;
   $('experiment-rows').replaceChildren(...task.experiments.map(exp => {
     const row = document.createElement('tr'), label = document.createElement('td');
     label.append(element('strong', modelNames[exp.proposal.model] || exp.proposal.model), element('small', `exp_${String(exp.number).padStart(3, '0')}`)); label.title = JSON.stringify(exp.proposal.parameters);
-    const score = element('td', exp.result ? exp.result.validation_f1.toFixed(4) : '—', 'score');
+    const score = element('td', exp.result ? selectedScore(exp.result).toFixed(4) : '—', 'score');
     const duration = element('td', exp.result ? `${exp.result.duration_seconds.toFixed(2)}s` : '—');
     const outcome = document.createElement('td'); outcome.append(element('span', task.legacy_results_at_risk ? '历史结果·有风险' : exp === best ? '当前最佳' : exp.status === 'success' ? '已完成' : exp.status === 'failed' ? '失败' : '训练中', exp === best && !task.legacy_results_at_risk ? 'row-best' : 'row-status'));
     row.append(label, score, duration, outcome); return row;
@@ -122,13 +124,13 @@ function render(task) {
     const [role, title, detail] = descriptions[event.event] || ['研究记录', event.event, ''];
     const item = document.createElement('li'); item.append(element('small', `${String(index + 1).padStart(2, '0')} / ${role}`), element('strong', title));
     let message = detail;
-    if (event.event === 'experiment') message = `${modelNames[event.result.model] || event.result.model} · 验证 F1 ${event.result.validation_f1.toFixed(4)}`;
+    if (event.event === 'experiment') message = `${modelNames[event.result.model] || event.result.model} · 验证 F1 ${selectedScore(event.result).toFixed(4)}`;
     if (event.event === 'proposal_accepted') message = `${modelNames[event.proposal.model] || event.proposal.model} · ${JSON.stringify(event.proposal.parameters)}`;
     if (event.event === 'research_stopped') message = reasons[event.reason] || '已停止新增实验。';
     item.append(element('p', message)); return item;
   }));
   if (!task.events.length) $('timeline').append(element('li', '该任务暂无 Agent 轨迹；手动实验记录在中间列表。', 'timeline-empty'));
-  $('final-explanation').textContent = task.final_result ? `已封存 · 最终测试 F1 ${task.final_result.test_f1.toFixed(4)}，不会再参与调参。` : '最终评估会选择验证集表现最好的方案，并封存这个任务。';
+  $('final-explanation').textContent = task.final_result ? `已封存 · 最终测试 F1 ${finalScore(task.final_result).toFixed(4)}，不会再参与调参。` : '最终评估会选择验证集表现最好的方案，并封存这个任务。';
   if (task.legacy_results_at_risk) $('final-explanation').textContent = '历史结果已标记风险。需要新建任务并明确处理泄漏后重新研究。';
   updateControls();
 }
@@ -141,7 +143,7 @@ async function refreshTasks() {
   const tasks = await api('/tasks');
   $('task-list').replaceChildren(...tasks.slice().reverse().map(task => {
     const button = element('button', undefined, 'task-item' + (state.selected === task.id ? ' selected' : '')); button.dataset.taskId = task.id;
-    button.append(element('strong', `预测 ${task.target}`), element('small', `${task.id.slice(0, 8)} · ${task.state === 'finalized' ? '已封存' : task.state === 'open' ? '可查看' : '已锁定'}`));
+    button.append(element('strong', `预测 ${task.target} · ${task.metric === 'f1_minority' ? '少数类 F1 / 标签 ' + task.pos_label : '宏平均 F1'}`), element('small', `${task.id.slice(0, 8)} · ${task.state === 'finalized' ? '已封存' : task.state === 'open' ? '可查看' : '已锁定'}`));
     button.onclick = () => loadTask(task.id).catch(error => toast(error.message, true)); return button;
   }));
   if (!tasks.length) $('task-list').append(element('p', '还没有任务，试试示例数据。', 'muted')); return tasks;
@@ -155,7 +157,7 @@ $('research-form').onsubmit = async event => {
   event.preventDefault(); if (state.busy || !state.csv || activeJob()) return;
   state.busy = true; updateControls();
   try {
-    const created = await api('/tasks', {csv_text: state.csv, target: $('target-column').value, max_experiments: Number($('max-experiments').value)});
+    const created = await api('/tasks', {csv_text: state.csv, target: $('target-column').value, metric: $('selection-metric').value, pos_label: $('positive-label').value, max_experiments: Number($('max-experiments').value)});
     await loadTask(created.task_id); await refreshTasks();
     if (state.task.risk_report?.blocked) { toast('数据风险需要审核，暂未启动训练。'); return; }
     await api(`/tasks/${created.task_id}/research`, {max_calls: Number($('max-calls').value), max_seconds: Number($('max-seconds').value)});
@@ -194,7 +196,7 @@ $('confirm-final').onclick = async () => {
   finally { state.busy = false; updateControls(); }
 };
 async function initialize() {
-  try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review']) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
+  try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review'] || !schema.components?.schemas?.TaskInput?.properties?.metric) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
   catch (error) { state.serverReady = false; updateControls(); $('connection').textContent = '服务未就绪'; toast(error.message || '无法连接后端，请确认本地服务正在运行。', true); }
 }
 setInterval(async () => {

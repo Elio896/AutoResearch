@@ -13,10 +13,13 @@ class ResearchSession:
     Restart persistence and a service API are deliberately deferred.
     """
 
-    def __init__(self, csv_path, target, seed=42, feature_decisions=None):
+    def __init__(self, csv_path, target, seed=42, feature_decisions=None, metric="f1_macro", pos_label="1"): 
         import pandas as pd
         from sklearn.model_selection import train_test_split
 
+        if metric not in ('f1_macro', 'f1_minority'):
+            raise ValueError('Unsupported selection metric.')
+        self.metric, self.pos_label = metric, str(pos_label)
         raw = Path(csv_path).read_bytes()
         self.dataset_sha256 = hashlib.sha256(raw).hexdigest()
         from io import BytesIO
@@ -52,12 +55,32 @@ class ResearchSession:
         # training labels only; use stable integer class IDs for every estimator.
         from sklearn.preprocessing import LabelEncoder
         self.label_encoder = LabelEncoder().fit(self.y.iloc[self.train_indices])
+        if metric == 'f1_minority':
+            counts = self.y.iloc[self.train_indices].value_counts()
+            if len(counts) != 2 or self.pos_label not in counts.index:
+                raise ValueError('Minority F1 requires binary labels and an explicit positive label.')
+            if counts[self.pos_label] > counts.min():
+                raise ValueError('Positive label must be a minority class in training data.')
+        self.positive_id = (int(self.label_encoder.transform([self.pos_label])[0])
+                            if self.pos_label in self.label_encoder.classes_ else None)
         self.y = pd.Series(self.label_encoder.transform(self.y), index=self.y.index)
         self.split_sizes = {'train': len(self.train_indices),
                             'validation': len(self.validation_indices),
                             'test': len(self.test_indices)}
         self.experiments = {}
         self.closed = False
+
+    def _metrics(self, actual, predictions, prefix):
+        from sklearn.metrics import f1_score, precision_score, recall_score
+        macro = float(f1_score(actual, predictions, average='macro', zero_division=0))
+        result = {'selection_metric': self.metric, 'pos_label': self.pos_label,
+                  prefix + '_score': macro}
+        if self.metric == 'f1_minority':
+            minority = float(f1_score(actual, predictions, pos_label=self.positive_id, zero_division=0))
+            result.update({prefix + '_score': minority, prefix + '_f1_minority': minority,
+                prefix + '_minority_precision': float(precision_score(actual, predictions, pos_label=self.positive_id, zero_division=0)),
+                prefix + '_minority_recall': float(recall_score(actual, predictions, pos_label=self.positive_id, zero_division=0))})
+        return result
 
     def ensure_ready(self):
         if self.risk_report['blocked']:
@@ -113,6 +136,7 @@ class ResearchSession:
                   'validation_f1': float(f1_score(actual, predictions, average='macro', zero_division=0)),
                   'validation_accuracy': float(accuracy_score(actual, predictions)),
                   'duration_seconds': time.perf_counter() - started}
+        result.update(self._metrics(actual, predictions, 'validation'))
         self.experiments[experiment_id] = (pipeline, result)
         return result
 
@@ -125,7 +149,7 @@ class ResearchSession:
         self.closed = True
         predictions = pipeline.predict(self.x.iloc[self.test_indices])
         actual = self.y.iloc[self.test_indices]
-        return {'experiment_id': experiment_id,
+        return {**self._metrics(actual, predictions, 'test'), 'experiment_id': experiment_id,
                 'test_f1': float(f1_score(actual, predictions, average='macro', zero_division=0)),
                 'test_accuracy': float(accuracy_score(actual, predictions))}
 
@@ -134,13 +158,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('csv')
     parser.add_argument('--target', required=True)
+    parser.add_argument('--metric', choices=['f1_macro', 'f1_minority'], default='f1_macro')
+    parser.add_argument('--pos-label', default='1')
     parser.add_argument('--model', choices=['logistic_regression', 'random_forest'], default='logistic_regression')
     parser.add_argument('--parameters', default='{}', help='JSON model parameters')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--feature-decisions', default='{}', help='Explicit JSON feature decisions with action and reason')
     parser.add_argument('--finalize', action='store_true', help='Evaluate reserved test set and close task')
     args = parser.parse_args()
-    session = ResearchSession(args.csv, args.target, seed=args.seed, feature_decisions=json.loads(args.feature_decisions))
+    session = ResearchSession(args.csv, args.target, seed=args.seed, feature_decisions=json.loads(args.feature_decisions), metric=args.metric, pos_label=args.pos_label)
     result = session.run(args.model, json.loads(args.parameters))
     if args.finalize:
         result['final_evaluation'] = session.finalize(result['experiment_id'])

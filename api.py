@@ -16,6 +16,8 @@ class TaskInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     csv_text: str = Field(min_length=1, max_length=2_000_000)
     target: str = Field(min_length=1, max_length=200)
+    metric: str = 'f1_macro'
+    pos_label: str = Field(default='1', max_length=200)
     max_experiments: int = Field(default=3, ge=1, le=20, strict=True)
 
 
@@ -88,7 +90,7 @@ def create_app(data_directory=None):
         with path.open('xb') as file:
             file.write(raw)
         try:
-            task_id = invoke(lambda: store.create(path, body.target, max_experiments=body.max_experiments))
+            task_id = invoke(lambda: store.create(path, body.target, max_experiments=body.max_experiments, metric=body.metric, pos_label=body.pos_label))
         except Exception:
             path.unlink(missing_ok=True)
             raise

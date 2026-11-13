@@ -176,3 +176,10 @@ CLI flags: --enable-cloud --enable-jev --max-cloud-calls 1 --max-jev-calls 1 --j
 Reports distinguish jev_calls, cloud_calls (DeepSeek), total_remote_calls and escalation_gate source (jev/rules/rule_fallback), probability and reported usage. jev_cost and cloud_cost remain null (unknown), not zero. Request/byte limits are not dollar caps. This introduces another paid provider; no cost or quality improvement is claimed before matched-budget comparison.
 
 Verification: complete suite 40 tests passed; new tests cover the official HTTP shape via a temporary loopback server, sanitized HTTP failures, probability validation, deny/allow/fallback and hard-budget precedence with actual sklearn training. No new packages or paid requests. Live Jev authentication/inference has NOT been verified because no project Jev key is configured. tools/run-jev.ps1 is syntax-checked only; its interactive key flow has not been executed by Codex. Earlier GitHub ZIP is a prior snapshot and does not contain this new optional router.
+
+
+## Task selection metric
+
+New tasks default to `f1_macro`. For binary minority-class research (including t2), select `f1_minority` and explicitly specify the minority label, e.g. `--metric f1_minority --pos-label 1` in executor/orchestrator/task-store create, or `metric`/`pos_label` in POST /tasks. The class must be a minority in the training split; labels are not inferred from holdout performance. This immutable task setting is persisted in SQLite and used for local/cloud improvement checks, best-experiment selection, and final evaluation.
+
+`validation_f1` / `test_f1` remain macro F1 for compatibility; `validation_score` / `test_score` carry the chosen objective. Minority tasks additionally report minority precision, recall and F1. UI tables display the chosen score and task caption names the objective. Existing tasks retain macro F1. Restart the API after upgrading; the UI refuses older backend schemas. Holdout 60/20/20 results are not interchangeable with the benchmark's five-fold CV reference. No benchmark threshold or dataset was changed.

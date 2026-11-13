@@ -24,6 +24,7 @@
       <label id="drop-zone" class="drop-zone" for="csv-file"><span class="upload-icon">↑</span><strong id="file-name">选择或拖入 CSV</strong><small id="file-info">UTF-8 编码 · 最大 2 MB</small><input id="csv-file" type="file" accept=".csv,text/csv"></label>
       <button id="use-demo" class="demo-button" type="button">先用鸢尾花数据试一试 <span>↗</span></button>
       <form id="research-form"><label class="field-label" for="target-column">要预测哪一列？</label><select id="target-column" required disabled><option value="">先选择数据文件</option></select>
+      <label class="field-label" for="selection-metric">优化指标</label><select id="selection-metric"><option value="f1_macro">宏平均 F1（通用分类）</option><option value="f1_minority">少数类 F1（二分类）</option></select><label class="field-label" for="positive-label">少数类标签（选择少数类 F1 时生效）</label><input id="positive-label" value="1" maxlength="200">
       <div class="budget-heading">给这次研究留多少空间？</div>
       <div class="two-fields"><label>实验次数<input id="max-experiments" type="number" value="3" min="1" max="20" required></label><label>模型调用次数<input id="max-calls" type="number" value="4" min="0" max="10" required></label></div>
       <label class="field-label" for="max-seconds">运行时间预算（秒）</label><input id="max-seconds" type="number" min="5" max="600" value="120" required>

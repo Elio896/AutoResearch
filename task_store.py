@@ -47,7 +47,7 @@ class TaskStore:
             ''')
             columns = {row['name'] for row in db.execute('PRAGMA table_info(tasks)')}
             for name, definition in [('feature_decisions', "TEXT NOT NULL DEFAULT '{}'"),
-                                     ('risk_report', 'TEXT')]:
+                                     ('risk_report', 'TEXT'), ('metric', "TEXT NOT NULL DEFAULT 'f1_macro'"), ('pos_label', "TEXT NOT NULL DEFAULT '1'")]:
                 if name not in columns:
                     db.execute(f'ALTER TABLE tasks ADD COLUMN {name} {definition}')
 
@@ -62,17 +62,17 @@ class TaskStore:
         finally:
             db.close()
 
-    def create(self, csv, target, seed=42, max_experiments=3, feature_decisions=None):
+    def create(self, csv, target, seed=42, max_experiments=3, feature_decisions=None, metric="f1_macro", pos_label="1"):
         if type(max_experiments) is not int or not 1 <= max_experiments <= 20:
             raise ValueError('Experiment budget must be an integer between 1 and 20.')
         path = Path(csv).resolve()
-        session = ResearchSession(path, target, seed=seed, feature_decisions=feature_decisions)
+        session = ResearchSession(path, target, seed=seed, feature_decisions=feature_decisions, metric=metric, pos_label=pos_label)
         task_id = uuid.uuid4().hex
         with self.connection() as db:
-            db.execute('INSERT INTO tasks (id,csv,target,dataset_hash,seed,max_experiments,versions,feature_decisions,risk_report) VALUES (?,?,?,?,?,?,?,?,?)',
+            db.execute('INSERT INTO tasks (id,csv,target,dataset_hash,seed,max_experiments,versions,feature_decisions,risk_report,metric,pos_label) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                        (task_id, str(path), target, session.dataset_sha256, seed,
                         max_experiments, json.dumps(runtime_versions(), sort_keys=True),
-                        json.dumps(feature_decisions or {}), json.dumps(session.risk_report)))
+                        json.dumps(feature_decisions or {}), json.dumps(session.risk_report), metric, str(pos_label)))
         return task_id
 
     def show(self, task_id):
@@ -99,7 +99,7 @@ class TaskStore:
         if task['risk_report'] is None:
             try:
                 session = ResearchSession(task['csv'], task['target'], seed=task['seed'],
-                                          feature_decisions=task['feature_decisions'])
+                                          feature_decisions=task['feature_decisions'], metric=task['metric'], pos_label=task['pos_label'])
                 if session.dataset_sha256 != task['dataset_hash']:
                     raise ValueError('Legacy data changed.')
                 task['risk_report'] = session.risk_report
@@ -112,7 +112,7 @@ class TaskStore:
 
     def review(self, task_id, decisions):
         task = self.show(task_id)
-        session = ResearchSession(task['csv'], task['target'], seed=task['seed'], feature_decisions=decisions)
+        session = ResearchSession(task['csv'], task['target'], seed=task['seed'], feature_decisions=decisions, metric=task['metric'], pos_label=task['pos_label'])
         if session.dataset_sha256 != task['dataset_hash']:
             raise ValueError('Dataset changed since task creation.')
         if task['versions'] != runtime_versions():
@@ -147,7 +147,7 @@ class TaskStore:
         if task['versions'] != runtime_versions():
             raise ValueError('Runtime versions changed; cannot reproduce this task.')
         session = ResearchSession(task['csv'], task['target'], seed=task['seed'],
-                                  feature_decisions=task['feature_decisions'])
+                                  feature_decisions=task['feature_decisions'], metric=task['metric'], pos_label=task['pos_label'])
         if session.dataset_sha256 != task['dataset_hash']:
             raise ValueError('Dataset changed since task creation; restore the original file.')
         session.ensure_ready()
@@ -211,7 +211,7 @@ class TaskStore:
             successes = [row for row in rows if row['status'] == 'success']
             if not successes:
                 raise RuntimeError('No successful experiment to evaluate.')
-            selected = max(successes, key=lambda row: json.loads(row['result'])['validation_f1'])
+            selected = max(successes, key=lambda row: json.loads(row['result']).get('validation_score', json.loads(row['result'])['validation_f1']))
             proposal = json.loads(selected['proposal'])
             selected_id = f"exp_{selected['number']:03d}"
             # Durable claim BEFORE test access. A crash after this point fails
@@ -259,6 +259,8 @@ def main():
     create = commands.add_parser('create')
     create.add_argument('csv')
     create.add_argument('--target', required=True)
+    create.add_argument('--metric', choices=['f1_macro', 'f1_minority'], default='f1_macro')
+    create.add_argument('--pos-label', default='1')
     create.add_argument('--max-experiments', type=int, default=3)
     commands.add_parser('list')
     for command in ('show', 'run', 'finalize', 'review'):
@@ -272,7 +274,7 @@ def main():
     args = parser.parse_args()
     store = TaskStore(args.database)
     if args.command == 'create':
-        result = {'task_id': store.create(args.csv, args.target, max_experiments=args.max_experiments)}
+        result = {'task_id': store.create(args.csv, args.target, max_experiments=args.max_experiments, metric=args.metric, pos_label=args.pos_label)}
     elif args.command == 'list':
         result = store.list_tasks()
     elif args.command == 'show':

@@ -155,7 +155,7 @@ class ResearchOrchestrator:
                 status, reason = 'escalation_required', 'validation_plateau'
                 break
             history = [{'model': item['model'], 'parameters': item['parameters'],
-                        'validation_f1': item['validation_f1']} for item in experiments[-5:]]
+                        'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1'])} for item in experiments[-5:]]
             messages = [
                 {'role': 'system', 'content': 'Propose ONE classifier experiment. Return only a JSON object with model and parameters. No explanation. No test evaluation. Never repeat an experiment.'},
                 {'role': 'user', 'content': 'Allowed: logistic_regression parameters C (0.001..100), max_iter (100..2000), class_weight (null or balanced); random_forest parameters n_estimators (10..200), max_depth (1..20), min_samples_leaf (1..20), class_weight (null or balanced). Example: {"model":"random_forest","parameters":{"max_depth":3,"n_estimators":50}}\nValidation history: '
@@ -197,7 +197,7 @@ class ResearchOrchestrator:
                 status, reason = 'escalation_required', 'experiment_failed'
                 record('experiment_failed', reason='Valid candidate could not fit this dataset.')
                 break
-            if result['validation_f1'] > best['validation_f1'] + 0.0001:
+            if result.get('validation_score', result['validation_f1']) > best.get('validation_score', best['validation_f1']) + 0.0001:
                 best, no_improvement = result, 0
             else:
                 no_improvement += 1
@@ -219,7 +219,7 @@ class ResearchOrchestrator:
                     'remaining_cloud_calls': self.max_cloud_calls,
                     'remaining_seconds': round(max(0, self.max_seconds - (time.monotonic() - started)), 2),
                     'validation_history': [{'model': item['model'], 'parameters': item['parameters'],
-                        'validation_f1': item['validation_f1']} for item in experiments[-5:]]}
+                        'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1'])} for item in experiments[-5:]]}
                 try:
                     gate_decision = self.jev_gate(gate_state, timeout=min(10, max(0.001,
                         self.max_seconds - (time.monotonic() - started))))
@@ -243,7 +243,7 @@ class ResearchOrchestrator:
                     break
                 # This is a bounded expert recovery proposal, not arbitrary tools or code.
                 history = [{'model': item['model'], 'parameters': item['parameters'],
-                            'validation_f1': item['validation_f1']} for item in experiments[-5:]]
+                            'selection_metric': item.get('selection_metric', 'f1_macro'), 'validation_score': item.get('validation_score', item['validation_f1'])} for item in experiments[-5:]]
                 messages = [
                     {'role': 'system', 'content': 'Diagnose validation stagnation or invalid local proposals. Return JSON only: model and parameters. Select a different bounded experiment, never evaluate test data. Allowed models: logistic_regression (C 0.001..100, max_iter 100..2000, class_weight null or balanced), random_forest (n_estimators 10..200, max_depth 1..20, min_samples_leaf 1..20, class_weight null or balanced).'},
                     {'role': 'user', 'content': json.dumps({'escalation_reason': reason,
@@ -286,7 +286,7 @@ class ResearchOrchestrator:
                     status, reason = 'escalation_required', 'cloud_experiment_failed'
                     record('experiment_failed', reason='Cloud candidate could not fit dataset.')
                     break
-                if candidate['validation_f1'] > best['validation_f1'] + 0.0001:
+                if candidate.get('validation_score', candidate['validation_f1']) > best.get('validation_score', best['validation_f1']) + 0.0001:
                     best = candidate
                 status, reason = 'completed', 'cloud_recovery'
                 break
@@ -308,6 +308,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('csv')
     parser.add_argument('--target', required=True)
+    parser.add_argument('--metric', choices=['f1_macro', 'f1_minority'], default='f1_macro')
+    parser.add_argument('--pos-label', default='1')
     parser.add_argument('--base-url', default='http://127.0.0.1:11435')
     parser.add_argument('--model', default='Qwen2.5-0.5B-Instruct:latest')
     parser.add_argument('--max-experiments', type=int, default=3)
@@ -341,7 +343,7 @@ def main():
         from task_store import StoredResearchSession, TaskStore
         store = TaskStore(args.database)
         task_id = store.create(args.csv, args.target, max_experiments=args.max_experiments,
-                               feature_decisions=json.loads(args.feature_decisions))
+                               feature_decisions=json.loads(args.feature_decisions), metric=args.metric, pos_label=args.pos_label)
         def emit(event):
             store.add_event(task_id, event)
             journal.write(json.dumps(event, ensure_ascii=False) + '\n')
