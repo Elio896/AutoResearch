@@ -70,9 +70,56 @@ class JevClient:
             raise JevError('Invalid Jev response.') from None
 
 
+class LocalJevClient:
+    """本地 JEV：协议对齐 TypeSafe，实现用本地 Qwen。
+
+    没有 TYPESAFE_API_KEY 时就用这个。跑的是真模型判断，不是 mock——
+    只是换成我们自己的机器算，成本和可用性都归我们控制。
+    """
+
+    DIAGNOSIS_QUESTION = {
+        'worth_cloud_diagnosis': {
+            'type': 'noul',
+            'instructions': ('Given this validation-only experiment history, is one cloud expert diagnosis '
+                             'likely to provide a useful new experiment after the local planner struggled? '
+                             'Judge benefit, not just whether budget remains. Do not infer test outcomes.'),
+        }
+    }
+
+    def __init__(self, base_url='http://127.0.0.1:11434', model='qwen2.5:7b-instruct-q4_K_M'):
+        self.base_url, self.model = base_url, model
+
+    def __call__(self, state, timeout):
+        from jev_local import ask_jev_local          # 延迟导入，避免循环依赖
+
+        # 上游传进来的可能是 dict（orchestrator 的 gate_state），先序列化
+        text = state if isinstance(state, str) else json.dumps(state, ensure_ascii=False)
+        result = ask_jev_local(text, self.DIAGNOSIS_QUESTION,
+                               base_url=self.base_url, model=self.model,
+                               timeout=max(5, int(timeout)))
+        if not result.get('ok'):
+            raise JevError(f"local jev failed: {result.get('error')}")
+        answer = (result.get('answers') or {}).get('worth_cloud_diagnosis') or {}
+        if answer.get('type') != 'noul' or answer.get('unavailable'):
+            raise JevError('local jev gave no usable probability')
+        return {'probability': probability(answer['noul']),
+                'model': result.get('model', self.model),
+                'usage': {},          # 本地调用不计钱，但调用次数由外部统计
+                'source': 'local_qwen'}
+
+
 class JevGate:
     def __init__(self, client, threshold=0.75):
         self.client, self.threshold = client, probability(threshold)
+
+    @classmethod
+    def auto(cls, api_key=None, threshold=0.75, base_url='http://127.0.0.1:11434',
+             model='qwen2.5:7b-instruct-q4_K_M'):
+        """有官方 key 就用官方，没有就用本地——但**不会**静默跳过校验。"""
+        import os
+        key = api_key or os.environ.get('TYPESAFE_API_KEY') or os.environ.get('JEV_API_KEY')
+        client = JevClient(key) if key else LocalJevClient(base_url=base_url, model=model)
+        return cls(client, threshold=threshold)
 
     def __call__(self, state, timeout):
         try:
