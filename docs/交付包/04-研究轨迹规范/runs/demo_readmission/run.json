@@ -1,0 +1,22 @@
+{
+  "run_id": "demo_readmission",
+  "goal": "降低 30 天再入院预测的漏诊率，在 20 次实验 / 20 万 token / 15 分钟预算内交付可复现结论",
+  "dataset": "readmission_missing.csv",
+  "data_sha256": "sha256:fc0d237dcf8a0d97997bc43b3d25c011e621743d91d3360bf7caf6c477a7a894",
+  "created_at": "2026-11-13T20:10:00+08:00",
+  "budget_cap": {
+    "tokens": 200000,
+    "wall_s": 900,
+    "experiments": 20
+  },
+  "final_best_round": "r002_class_weight",
+  "final_metric": 0.5536,
+  "rounds": [
+    "r000_baseline",
+    "r001_missing_indicator",
+    "r002_class_weight",
+    "r003_drop_missing_rows",
+    "r004_threshold_sweep"
+  ],
+  "demo": true
+}
