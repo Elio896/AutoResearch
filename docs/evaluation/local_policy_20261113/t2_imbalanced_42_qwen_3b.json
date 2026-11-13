@@ -1,0 +1,253 @@
+{
+  "task": "t2_imbalanced",
+  "seed": 42,
+  "arm": "qwen_3b",
+  "model": "qwen2.5:3b-instruct-q4_K_M",
+  "endpoint": "http://127.0.0.1:11434",
+  "metric": "f1_minority",
+  "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+  "split_sha256": "a6194a52b921905aa0c3adef19bef700ccbec4d5cfebdf018174fb3da7c36f82",
+  "budget": {
+    "max_experiments": 3,
+    "max_calls": 2,
+    "max_seconds": 60
+  },
+  "elapsed_seconds": 4.032074500002636,
+  "best_score": 0.3541666666666667,
+  "best_experiment_id": "exp_001",
+  "training_attempts": 3,
+  "test_evaluated": false,
+  "report": {
+    "status": "completed",
+    "stop_reason": "experiment_budget",
+    "experiments": [
+      {
+        "status": "success",
+        "experiment_id": "exp_001",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000
+        },
+        "seed": 42,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.6608018207282913,
+        "validation_accuracy": 0.938,
+        "duration_seconds": 0.039905699999508215,
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.3541666666666667,
+        "validation_f1_minority": 0.3541666666666667,
+        "validation_minority_precision": 0.8947368421052632,
+        "validation_minority_recall": 0.22077922077922077
+      },
+      {
+        "status": "success",
+        "experiment_id": "exp_002",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1500,
+          "C": 10,
+          "class_weight": "balanced"
+        },
+        "seed": 42,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.5836277141915124,
+        "validation_accuracy": 0.779,
+        "duration_seconds": 0.047250999999960186,
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.2984126984126984,
+        "validation_f1_minority": 0.2984126984126984,
+        "validation_minority_precision": 0.19747899159663865,
+        "validation_minority_recall": 0.6103896103896104
+      },
+      {
+        "status": "success",
+        "experiment_id": "exp_003",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1800,
+          "C": 0.1,
+          "class_weight": "balanced"
+        },
+        "seed": 42,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.5868862071394441,
+        "validation_accuracy": 0.783,
+        "duration_seconds": 0.03546079999796348,
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.3022508038585209,
+        "validation_f1_minority": 0.3022508038585209,
+        "validation_minority_precision": 0.20085470085470086,
+        "validation_minority_recall": 0.6103896103896104
+      }
+    ],
+    "best_experiment_id": "exp_001",
+    "model_calls": 2,
+    "reported_local_tokens": {
+      "prompt": 467,
+      "completion": 57
+    },
+    "cloud_calls": 0,
+    "reported_cloud_tokens": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0
+    },
+    "cloud_usage_complete": true,
+    "cloud_cost": null,
+    "jev_calls": 0,
+    "escalation_gate": {
+      "source": "rules",
+      "allow_cloud": null,
+      "reason": "not_evaluated"
+    },
+    "total_remote_calls": 0,
+    "jev_cost": null,
+    "elapsed_seconds": 4.031769199998962,
+    "events": [
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_001",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000
+          },
+          "seed": 42,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.6608018207282913,
+          "validation_accuracy": 0.938,
+          "duration_seconds": 0.039905699999508215,
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.3541666666666667,
+          "validation_f1_minority": 0.3541666666666667,
+          "validation_minority_precision": 0.8947368421052632,
+          "validation_minority_recall": 0.22077922077922077
+        }
+      },
+      {
+        "event": "proposal_accepted",
+        "attempt": 1,
+        "proposal": {
+          "model": "logistic_regression",
+          "parameters": {
+            "C": 10,
+            "max_iter": 1500,
+            "class_weight": "balanced"
+          }
+        }
+      },
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_002",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1500,
+            "C": 10,
+            "class_weight": "balanced"
+          },
+          "seed": 42,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.5836277141915124,
+          "validation_accuracy": 0.779,
+          "duration_seconds": 0.047250999999960186,
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.2984126984126984,
+          "validation_f1_minority": 0.2984126984126984,
+          "validation_minority_precision": 0.19747899159663865,
+          "validation_minority_recall": 0.6103896103896104
+        }
+      },
+      {
+        "event": "proposal_accepted",
+        "attempt": 2,
+        "proposal": {
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1800,
+            "C": 0.1,
+            "class_weight": "balanced"
+          }
+        }
+      },
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_003",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1800,
+            "C": 0.1,
+            "class_weight": "balanced"
+          },
+          "seed": 42,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.5868862071394441,
+          "validation_accuracy": 0.783,
+          "duration_seconds": 0.03546079999796348,
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.3022508038585209,
+          "validation_f1_minority": 0.3022508038585209,
+          "validation_minority_precision": 0.20085470085470086,
+          "validation_minority_recall": 0.6103896103896104
+        }
+      },
+      {
+        "event": "research_stopped",
+        "status": "completed",
+        "reason": "experiment_budget"
+      }
+    ],
+    "test_evaluated": false
+  }
+}

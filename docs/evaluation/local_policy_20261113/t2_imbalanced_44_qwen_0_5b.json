@@ -1,0 +1,184 @@
+{
+  "task": "t2_imbalanced",
+  "seed": 44,
+  "arm": "qwen_0_5b",
+  "model": "Qwen2.5-0.5B-Instruct:latest",
+  "endpoint": "http://127.0.0.1:11435",
+  "metric": "f1_minority",
+  "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+  "split_sha256": "99b008f8aaf6d6b19e1a110e44637a5b846c5b933825871ff8235da5c5054b3b",
+  "budget": {
+    "max_experiments": 3,
+    "max_calls": 2,
+    "max_seconds": 60
+  },
+  "elapsed_seconds": 5.25460209999801,
+  "best_score": 0.35514018691588783,
+  "best_experiment_id": "exp_001",
+  "training_attempts": 2,
+  "test_evaluated": false,
+  "report": {
+    "status": "escalation_required",
+    "stop_reason": "local_call_budget",
+    "experiments": [
+      {
+        "status": "success",
+        "experiment_id": "exp_001",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000
+        },
+        "seed": 44,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.6593450538382926,
+        "validation_accuracy": 0.931,
+        "duration_seconds": 0.04119169999830774,
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.35514018691588783,
+        "validation_f1_minority": 0.35514018691588783,
+        "validation_minority_precision": 0.6333333333333333,
+        "validation_minority_recall": 0.24675324675324675
+      },
+      {
+        "status": "success",
+        "experiment_id": "exp_002",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000,
+          "C": 0.001
+        },
+        "seed": 44,
+        "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+        "split_sizes": {
+          "train": 3000,
+          "validation": 1000,
+          "test": 1000
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.4799791991679667,
+        "validation_accuracy": 0.923,
+        "duration_seconds": 0.03600900000310503,
+        "selection_metric": "f1_minority",
+        "pos_label": "1",
+        "validation_score": 0.0,
+        "validation_f1_minority": 0.0,
+        "validation_minority_precision": 0.0,
+        "validation_minority_recall": 0.0
+      }
+    ],
+    "best_experiment_id": "exp_001",
+    "model_calls": 2,
+    "reported_local_tokens": {
+      "prompt": 450,
+      "completion": 64
+    },
+    "cloud_calls": 0,
+    "reported_cloud_tokens": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0
+    },
+    "cloud_usage_complete": true,
+    "cloud_cost": null,
+    "jev_calls": 0,
+    "escalation_gate": {
+      "source": "rules",
+      "allow_cloud": null,
+      "reason": "not_evaluated"
+    },
+    "total_remote_calls": 0,
+    "jev_cost": null,
+    "elapsed_seconds": 5.254339800001617,
+    "events": [
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_001",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000
+          },
+          "seed": 44,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.6593450538382926,
+          "validation_accuracy": 0.931,
+          "duration_seconds": 0.04119169999830774,
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.35514018691588783,
+          "validation_f1_minority": 0.35514018691588783,
+          "validation_minority_precision": 0.6333333333333333,
+          "validation_minority_recall": 0.24675324675324675
+        }
+      },
+      {
+        "event": "proposal_accepted",
+        "attempt": 1,
+        "proposal": {
+          "model": "logistic_regression",
+          "parameters": {
+            "C": 0.001,
+            "max_iter": 1000
+          }
+        }
+      },
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_002",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000,
+            "C": 0.001
+          },
+          "seed": 44,
+          "dataset_sha256": "4800887c31b522a3fbd5354c16859676d6bc0b150eb5e94c8100dbac02f63774",
+          "split_sizes": {
+            "train": 3000,
+            "validation": 1000,
+            "test": 1000
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.4799791991679667,
+          "validation_accuracy": 0.923,
+          "duration_seconds": 0.03600900000310503,
+          "selection_metric": "f1_minority",
+          "pos_label": "1",
+          "validation_score": 0.0,
+          "validation_f1_minority": 0.0,
+          "validation_minority_precision": 0.0,
+          "validation_minority_recall": 0.0
+        }
+      },
+      {
+        "event": "proposal_rejected",
+        "attempt": 2,
+        "reason": "Invalid or duplicate JSON. Use the exact allowed schema and parameter ranges."
+      },
+      {
+        "event": "research_stopped",
+        "status": "escalation_required",
+        "reason": "local_call_budget"
+      }
+    ],
+    "test_evaluated": false
+  }
+}
