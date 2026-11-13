@@ -28,6 +28,18 @@ class ExperimentInput(BaseModel):
     parameters: dict = Field(default_factory=dict)
 
 
+class FiveRolesInput(BaseModel):
+    """现场演示用：跑一遍五角色研究闭环。"""
+    model_config = ConfigDict(extra='forbid')
+    csv_text: str = Field(min_length=1, max_length=2_000_000)
+    target: str = Field(min_length=1, max_length=200)
+    metric: str = 'f1_minority'
+    pos_label: str = Field(default='1', max_length=200)
+    max_experiments: int = Field(default=3, ge=1, le=6, strict=True)
+    model: str = 'qwen2.5:7b-instruct-q4_K_M'
+    offline: bool = True    # True: 不依赖 Ollama，用确定性 proposer（演示兜底）
+
+
 class ResearchInput(BaseModel):
     baseline_policy: Literal["logreg", "fixed_search"] = "logreg"
     model_config = ConfigDict(extra='forbid')
@@ -97,6 +109,61 @@ def create_app(data_directory=None):
             path.unlink(missing_ok=True)
             raise
         return {'task_id': task_id, 'state': 'open', 'risk_report': store.show(task_id)['risk_report']}
+
+    @app.post('/research/five-roles', status_code=201)
+    def run_five_roles(body: FiveRolesInput):
+        """现场演示：跑一遍五角色研究闭环，返回版本树和事件。
+
+        offline=True（默认）时用确定性 proposer，不依赖 Ollama——
+        现场万一模型服务挂了也能演示整条链（角色/回滚/轨迹都在跑）。
+        """
+        import tempfile
+        from pathlib import Path as P
+        from agents import Budget
+        from executor import ResearchSession
+        from research_loop import ResearchLoop
+
+        tmp = tempfile.NamedTemporaryFile('w', suffix='.csv', delete=False, encoding='utf-8')
+        try:
+            tmp.write(body.csv_text)
+            tmp.close()
+            session = ResearchSession(tmp.name, body.target, metric=body.metric,
+                                      pos_label=body.pos_label)
+
+            if body.offline:
+                # 确定性 proposer：按"没试过的模型优先"轮流给方案，不调模型
+                tried = {'n': 0}
+                catalogue = [
+                    {'model': 'hist_gradient_boosting', 'parameters': {'max_depth': 4}},
+                    {'model': 'random_forest', 'parameters': {'n_estimators': 50}},
+                    {'model': 'logistic_regression', 'parameters': {'C': 0.5}},
+                ]
+
+                def proposer(messages, timeout=None):
+                    idx = tried['n'] % len(catalogue)
+                    tried['n'] += 1
+                    proposal = dict(catalogue[idx])
+                    proposal.update({'hypothesis': f'offline proposal {idx}',
+                                     'expected_direction': 'up',
+                                     'falsifier': 'validation score does not improve'})
+                    import json as _json
+                    return {'message': {'content': _json.dumps(proposal)},
+                            'prompt_eval_count': 0, 'eval_count': 0}
+            else:
+                from orchestrator import LocalQwenClient
+                proposer = LocalQwenClient(model=body.model)
+
+            budget = Budget(max_experiments=body.max_experiments, max_seconds=120.0,
+                            max_local_calls=body.max_experiments + 1)
+            loop = ResearchLoop(session, proposer=proposer, budget=budget, patience=2)
+            result = loop.run()
+            return {'summary': result['summary'], 'events': result['events'],
+                    'experiments': result['experiments'], 'offline': body.offline}
+        finally:
+            try:
+                P(tmp.name).unlink()
+            except OSError:
+                pass
 
     @app.get('/tasks/{task_id}')
     def show_task(task_id: str):
