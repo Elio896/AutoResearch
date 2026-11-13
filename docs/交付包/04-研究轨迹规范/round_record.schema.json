@@ -1,0 +1,247 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://evoresearch.local/schema/round_record.schema.json",
+  "title": "EvoResearch 单轮研究记录 round_record.json",
+  "description": "一轮 = 一个原子干预。只追加不修改；修正以 revision+1 新文件形式出现。九项证据缺一不可。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "round", "round_id", "run_id", "parent_round_id",
+    "started_at", "ended_at", "status", "revision", "chain",
+    "input", "hypothesis", "intervention", "exec", "result",
+    "validation", "budget", "conclusion"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^1\\.\\d+$" },
+    "run_id": { "type": "string", "minLength": 3 },
+    "round": { "type": "integer", "minimum": 0 },
+    "round_id": { "type": "string", "pattern": "^r[0-9]{3}_[a-z0-9_]+$" },
+    "parent_round_id": { "type": ["string", "null"] },
+    "revision": { "type": "integer", "minimum": 1, "description": "1 = 首次写入；任何修改都 +1，旧版本保留" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "ended_at": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["kept", "reverted", "failed", "aborted"],
+      "description": "kept=采纳；reverted=被闸门或 Review 回滚；failed=实验本身没跑成；aborted=预算/外部原因中断"
+    },
+
+    "chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algo", "prev_hash", "hash"],
+      "properties": {
+        "algo": { "const": "sha256" },
+        "prev_hash": { "type": ["string", "null"], "description": "首轮为 null" },
+        "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset", "sha256", "rows", "cols", "target", "pos_rate", "split"],
+      "properties": {
+        "dataset": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rows": { "type": "integer", "minimum": 1 },
+        "cols": { "type": "integer", "minimum": 1 },
+        "target": { "type": "string" },
+        "pos_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "profile": {
+          "type": "object",
+          "description": "Analyst 的产出：缺失率、类别分布、异常值计数",
+          "additionalProperties": true,
+          "properties": {
+            "missing_rate": { "type": "object", "additionalProperties": { "type": "number" } },
+            "class_counts": { "type": "object", "additionalProperties": { "type": "integer" } }
+          }
+        },
+        "split": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scheme", "k", "seed", "split_hash"],
+          "properties": {
+            "scheme": { "type": "string", "enum": ["stratified_kfold", "kfold", "holdout", "time_split"] },
+            "k": { "type": "integer", "minimum": 2 },
+            "seed": { "type": "integer" },
+            "split_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            "file": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "expected_direction", "falsifier", "confidence_before"],
+      "properties": {
+        "text": { "type": "string", "minLength": 10 },
+        "expected_direction": { "type": "string", "enum": ["up", "down", "flat"] },
+        "falsifier": { "type": "string", "minLength": 10, "description": "什么结果会证伪它。必须可判真假" },
+        "confidence_before": { "type": "number", "minimum": 0, "maximum": 1 },
+        "alternatives_rejected": { "type": "array", "items": { "type": "string" } },
+        "authored_by": { "type": "string", "description": "哪个 Agent / 模型 / 人工" }
+      }
+    },
+
+    "intervention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "diff"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["baseline", "feature", "preprocess", "model", "hyperparameter", "threshold", "class_weight", "data", "revert"]
+        },
+        "diff": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["op", "field"],
+            "properties": {
+              "op": { "type": "string", "enum": ["add", "remove", "change"] },
+              "field": { "type": "string" },
+              "from": {},
+              "to": {}
+            }
+          }
+        },
+        "unchanged": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "exec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "code_commit", "env_hash", "exit_code", "duration_s", "log_path"],
+      "properties": {
+        "command": { "type": "string", "minLength": 3 },
+        "code_commit": { "type": "string", "minLength": 4 },
+        "env_hash": { "type": "string", "minLength": 8 },
+        "exit_code": { "type": "integer" },
+        "duration_s": { "type": "number", "minimum": 0 },
+        "log_path": { "type": "string" },
+        "stage": { "type": "string", "enum": ["experiment_only", "with_llm"] }
+      }
+    },
+
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "value", "per_fold", "std", "ci95", "baseline_value", "delta", "mde", "delta_significant", "confusion"],
+      "properties": {
+        "metric": { "type": "string", "enum": ["f1", "pr_auc", "roc_auc", "recall", "precision"] },
+        "value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "per_fold": { "type": "array", "minItems": 2, "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+        "std": { "type": "number", "minimum": 0 },
+        "ci95": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } },
+        "baseline_value": { "type": "number", "minimum": 0, "maximum": 1 },
+        "delta": { "type": "number", "minimum": -1, "maximum": 1 },
+        "mde": { "type": "number", "minimum": 0, "description": "最小可检测效应，约 1.5×SE" },
+        "delta_significant": { "type": "boolean" },
+        "confusion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tn", "fp", "fn", "tp"],
+          "properties": {
+            "tn": { "type": "integer", "minimum": 0 },
+            "fp": { "type": "integer", "minimum": 0 },
+            "fn": { "type": "integer", "minimum": 0 },
+            "tp": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "secondary": { "type": "object", "additionalProperties": { "type": "number" } }
+      }
+    },
+
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gates", "redlines", "reverted", "restored_from"],
+      "properties": {
+        "gates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "pass"],
+            "properties": {
+              "id": { "type": "string" },
+              "pass": { "type": "boolean" },
+              "detail": { "type": "string" }
+            }
+          }
+        },
+        "redlines": { "type": "array", "items": { "type": "string" } },
+        "reverted": { "type": "boolean" },
+        "restored_from": { "type": ["string", "null"], "description": "reverted=true 时必须指向一个已存在的 round_id" }
+      }
+    },
+
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tokens_in", "tokens_out", "cost_usd", "wall_s", "experiments_used", "cumulative", "cap", "reconciled_with"],
+      "properties": {
+        "tokens_in": { "type": "integer", "minimum": 0 },
+        "tokens_out": { "type": "integer", "minimum": 0 },
+        "cost_usd": { "type": "number", "minimum": 0 },
+        "wall_s": { "type": "number", "minimum": 0 },
+        "experiments_used": { "type": "integer", "minimum": 0 },
+        "cumulative": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tokens", "wall_s", "experiments"],
+          "properties": {
+            "tokens": { "type": "integer", "minimum": 0 },
+            "wall_s": { "type": "number", "minimum": 0 },
+            "experiments": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "cap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tokens", "wall_s", "experiments"],
+          "properties": {
+            "tokens": { "type": "integer", "minimum": 1 },
+            "wall_s": { "type": "number", "minimum": 1 },
+            "experiments": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "reconciled_with": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "tokens", "diff"],
+          "properties": {
+            "source": { "type": "string", "description": "例如 gateway_usage_log" },
+            "tokens": { "type": "integer", "minimum": 0 },
+            "diff": { "type": "integer", "description": "自记 − 网关；绝对值应 ≤ 1% 总 token" }
+          }
+        }
+      }
+    },
+
+    "conclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "reason", "next_hypothesis"],
+      "properties": {
+        "verdict": { "type": "string", "enum": ["kept", "reverted", "failed", "aborted"] },
+        "reason": { "type": "string", "minLength": 10, "description": "必须含数字" },
+        "next_hypothesis": { "type": "string" },
+        "carry_over": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "ext": {
+      "type": "object",
+      "description": "换比赛时只扩展这里，核心区不改",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{"round": 0, "round_id": "r000_baseline", "prev_hash": null, "hash": "sha256:76298f8bef9d72d5300b847d91b62f1bc955f2e552fff40e9239c4ad6724df89"}
+{"round": 1, "round_id": "r001_missing_indicator", "prev_hash": "sha256:76298f8bef9d72d5300b847d91b62f1bc955f2e552fff40e9239c4ad6724df89", "hash": "sha256:c49df7bb2d690306c0b57c950edba57304c5c8265f1dace238d12b8ed832b0f2"}
+{"round": 2, "round_id": "r002_class_weight", "prev_hash": "sha256:c49df7bb2d690306c0b57c950edba57304c5c8265f1dace238d12b8ed832b0f2", "hash": "sha256:e9c83bc4b9fa25488cf5d1306782f5cb593538543e591b2d986ffdd685635b65"}
+{"round": 3, "round_id": "r003_drop_missing_rows", "prev_hash": "sha256:e9c83bc4b9fa25488cf5d1306782f5cb593538543e591b2d986ffdd685635b65", "hash": "sha256:8c9ce77ec407de77f8a87e7fb46c0994784a0b9ab6efd54325a608401d386e10"}
+{"round": 4, "round_id": "r004_threshold_sweep", "prev_hash": "sha256:8c9ce77ec407de77f8a87e7fb46c0994784a0b9ab6efd54325a608401d386e10", "hash": "sha256:a55b94f6c618ed0d13742df9535b479e9a5a283d7428e57dd73c81fd7388a5e9"}

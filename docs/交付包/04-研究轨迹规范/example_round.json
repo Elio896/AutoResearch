@@ -1,0 +1,195 @@
+{
+  "schema_version": "1.0",
+  "run_id": "demo_readmission",
+  "round": 1,
+  "round_id": "r001_missing_indicator",
+  "parent_round_id": "r000_baseline",
+  "revision": 1,
+  "started_at": "2026-11-13T20:10:03+08:00",
+  "ended_at": "2026-11-13T20:10:06+08:00",
+  "status": "kept",
+  "chain": {
+    "algo": "sha256",
+    "prev_hash": "sha256:76298f8bef9d72d5300b847d91b62f1bc955f2e552fff40e9239c4ad6724df89",
+    "hash": "sha256:c49df7bb2d690306c0b57c950edba57304c5c8265f1dace238d12b8ed832b0f2"
+  },
+  "input": {
+    "dataset": "readmission_missing.csv",
+    "sha256": "sha256:fc0d237dcf8a0d97997bc43b3d25c011e621743d91d3360bf7caf6c477a7a894",
+    "rows": 2400,
+    "cols": 15,
+    "target": "readmitted_30d",
+    "pos_rate": 0.2796,
+    "profile": {
+      "missing_rate": {
+        "bmi": 0.114,
+        "hba1c": 0.193,
+        "creatinine": 0.124,
+        "hemoglobin": 0.144,
+        "discharge_disposition": 0.067
+      },
+      "class_counts": {
+        "0": 1729,
+        "1": 671
+      }
+    },
+    "split": {
+      "scheme": "stratified_kfold",
+      "k": 5,
+      "seed": 42,
+      "split_hash": "sha256:00279d51be4c0f0ff2ab909759f969099bcbfe38413ac4af877affb6d1626f0f"
+    }
+  },
+  "hypothesis": {
+    "text": "hba1c / creatinine 的缺失不是随机的：越可能再入院的病人越会被安排检查。中位数填补抹掉了这个信号，加缺失指示变量应能把它找回来。",
+    "expected_direction": "up",
+    "falsifier": "若 ΔF1 < 0.02 或 5 折中同向少于 4 折，则假设不成立，应撤掉指示变量。",
+    "confidence_before": 0.65,
+    "authored_by": "demo_script（真实 run 由 Scientist 写入）"
+  },
+  "intervention": {
+    "kind": "feature",
+    "diff": [
+      {
+        "op": "add",
+        "field": "hba1c__isna",
+        "from": null,
+        "to": "isna(hba1c)"
+      },
+      {
+        "op": "add",
+        "field": "creatinine__isna",
+        "from": null,
+        "to": "isna(creatinine)"
+      },
+      {
+        "op": "add",
+        "field": "bmi__isna",
+        "from": null,
+        "to": "isna(bmi)"
+      },
+      {
+        "op": "add",
+        "field": "hemoglobin__isna",
+        "from": null,
+        "to": "isna(hemoglobin)"
+      },
+      {
+        "op": "add",
+        "field": "discharge_disposition__isna",
+        "from": null,
+        "to": "isna(discharge_disposition)"
+      }
+    ],
+    "unchanged": [
+      "input.sha256",
+      "split",
+      "random_state"
+    ]
+  },
+  "exec": {
+    "command": "OMP_NUM_THREADS=1 python make_demo_run.py",
+    "code_commit": "demo-7f3a1c9",
+    "env_hash": "py3.10-sklearn1.7-numpy2.2-m1",
+    "exit_code": 0,
+    "duration_s": 0.01,
+    "log_path": "runs/demo_readmission/logs/r001_missing_indicator.log",
+    "stage": "experiment_only"
+  },
+  "result": {
+    "metric": "f1",
+    "value": 0.4425,
+    "per_fold": [
+      0.3902,
+      0.3941,
+      0.4645,
+      0.4683,
+      0.495
+    ],
+    "std": 0.0424,
+    "ci95": [
+      0.4053,
+      0.4797
+    ],
+    "baseline_value": 0.1654,
+    "delta": 0.2771,
+    "mde": 0.0284,
+    "delta_significant": true,
+    "confusion": {
+      "tn": 1601,
+      "fp": 128,
+      "fn": 444,
+      "tp": 227
+    },
+    "secondary": {
+      "pr_auc": 0.5629,
+      "roc_auc": 0.7438,
+      "threshold": 0.5,
+      "n_features": 23
+    }
+  },
+  "validation": {
+    "gates": [
+      {
+        "id": "no_id_column",
+        "pass": true,
+        "detail": "patient_id 已丢弃"
+      },
+      {
+        "id": "split_stratified",
+        "pass": true,
+        "detail": "StratifiedKFold(k=5, seed=42)"
+      },
+      {
+        "id": "metric_is_f1",
+        "pass": true,
+        "detail": "主指标 F1，accuracy 仅作参考"
+      },
+      {
+        "id": "n_features_sane",
+        "pass": true,
+        "detail": "23 个特征"
+      },
+      {
+        "id": "delta_vs_mde",
+        "pass": true,
+        "detail": "Δ=+0.277, MDE=0.0284"
+      }
+    ],
+    "redlines": [],
+    "reverted": false,
+    "restored_from": null
+  },
+  "budget": {
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "cost_usd": 0.0,
+    "wall_s": 3.01,
+    "experiments_used": 1,
+    "cumulative": {
+      "tokens": 0,
+      "wall_s": 6.0,
+      "experiments": 2
+    },
+    "cap": {
+      "tokens": 200000,
+      "wall_s": 900,
+      "experiments": 20
+    },
+    "reconciled_with": {
+      "source": "gateway_usage_log",
+      "tokens": 0,
+      "diff": 0
+    }
+  },
+  "conclusion": {
+    "verdict": "kept",
+    "reason": "F1 0.165 → 0.443（Δ+0.277 > MDE 0.0284），5 折中 5/5 折同向。",
+    "next_hypothesis": "换阈值扫一遍，看 F1 是否还有空间。",
+    "carry_over": []
+  },
+  "ext": {
+    "demo": true,
+    "note": "由 make_demo_run.py 生成：只跑执行器，未接 LLM，故 token=0。数字为真实运行结果。"
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0",
+  "run_id": "demo_readmission",
+  "round": 0,
+  "round_id": "r000_baseline",
+  "parent_round_id": null,
+  "revision": 1,
+  "started_at": "2026-11-13T20:10:00+08:00",
+  "ended_at": "2026-11-13T20:10:03+08:00",
+  "status": "kept",
+  "chain": {
+    "algo": "sha256",
+    "prev_hash": null,
+    "hash": "sha256:76298f8bef9d72d5300b847d91b62f1bc955f2e552fff40e9239c4ad6724df89"
+  },
+  "input": {
+    "dataset": "readmission_missing.csv",
+    "sha256": "sha256:fc0d237dcf8a0d97997bc43b3d25c011e621743d91d3360bf7caf6c477a7a894",
+    "rows": 2400,
+    "cols": 15,
+    "target": "readmitted_30d",
+    "pos_rate": 0.2796,
+    "profile": {
+      "missing_rate": {
+        "bmi": 0.114,
+        "hba1c": 0.193,
+        "creatinine": 0.124,
+        "hemoglobin": 0.144,
+        "discharge_disposition": 0.067
+      },
+      "class_counts": {
+        "0": 1729,
+        "1": 671
+      }
+    },
+    "split": {
+      "scheme": "stratified_kfold",
+      "k": 5,
+      "seed": 42,
+      "split_hash": "sha256:00279d51be4c0f0ff2ab909759f969099bcbfe38413ac4af877affb6d1626f0f"
+    }
+  },
+  "hypothesis": {
+    "text": "基线：中位数填补 + 逻辑回归 + 0.5 阈值。先确认可复现的下限，后续所有提升都相对它算。",
+    "expected_direction": "flat",
+    "falsifier": "若 5 折 F1 的标准差 > 0.06，说明划分不稳，后续比较不可信，需先换划分方案。",
+    "confidence_before": 0.5,
+    "authored_by": "demo_script（真实 run 由 Scientist 写入）"
+  },
+  "intervention": {
+    "kind": "baseline",
+    "diff": [
+      {
+        "op": "add",
+        "field": "pipeline",
+        "from": null,
+        "to": "median_impute + logistic + thr0.5"
+      }
+    ],
+    "unchanged": [
+      "input.sha256",
+      "split",
+      "random_state"
+    ]
+  },
+  "exec": {
+    "command": "OMP_NUM_THREADS=1 python make_demo_run.py",
+    "code_commit": "demo-7f3a1c9",
+    "env_hash": "py3.10-sklearn1.7-numpy2.2-m1",
+    "exit_code": 0,
+    "duration_s": 0.02,
+    "log_path": "runs/demo_readmission/logs/r000_baseline.log",
+    "stage": "experiment_only"
+  },
+  "result": {
+    "metric": "f1",
+    "value": 0.1654,
+    "per_fold": [
+      0.1509,
+      0.1146,
+      0.1806,
+      0.1538,
+      0.2264
+    ],
+    "std": 0.0371,
+    "ci95": [
+      0.1329,
+      0.1979
+    ],
+    "baseline_value": 0.1654,
+    "delta": 0.0,
+    "mde": 0.0249,
+    "delta_significant": false,
+    "confusion": {
+      "tn": 1679,
+      "fp": 50,
+      "fn": 606,
+      "tp": 65
+    },
+    "secondary": {
+      "pr_auc": 0.4055,
+      "roc_auc": 0.6386,
+      "threshold": 0.5,
+      "n_features": 13
+    }
+  },
+  "validation": {
+    "gates": [
+      {
+        "id": "no_id_column",
+        "pass": true,
+        "detail": "patient_id 已丢弃"
+      },
+      {
+        "id": "split_stratified",
+        "pass": true,
+        "detail": "StratifiedKFold(k=5, seed=42)"
+      },
+      {
+        "id": "metric_is_f1",
+        "pass": true,
+        "detail": "主指标 F1，accuracy 仅作参考"
+      },
+      {
+        "id": "n_features_sane",
+        "pass": true,
+        "detail": "13 个特征"
+      },
+      {
+        "id": "delta_vs_mde",
+        "pass": true,
+        "detail": "Δ=+0.000, MDE=0.0249"
+      }
+    ],
+    "redlines": [],
+    "reverted": false,
+    "restored_from": null
+  },
+  "budget": {
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "cost_usd": 0.0,
+    "wall_s": 3.02,
+    "experiments_used": 1,
+    "cumulative": {
+      "tokens": 0,
+      "wall_s": 3.0,
+      "experiments": 1
+    },
+    "cap": {
+      "tokens": 200000,
+      "wall_s": 900,
+      "experiments": 20
+    },
+    "reconciled_with": {
+      "source": "gateway_usage_log",
+      "tokens": 0,
+      "diff": 0
+    }
+  },
+  "conclusion": {
+    "verdict": "kept",
+    "reason": "基线建立：F1=0.165（5 折 [0.1509, 0.1146, 0.1806, 0.1538, 0.2264]，std=0.037）。样本 2400 行，正例率 28.0%。",
+    "next_hypothesis": "加类别权重，把召回拉起来。",
+    "carry_over": []
+  },
+  "ext": {
+    "demo": true,
+    "note": "由 make_demo_run.py 生成：只跑执行器，未接 LLM，故 token=0。数字为真实运行结果。"
+  }
+}
