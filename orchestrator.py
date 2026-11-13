@@ -98,13 +98,15 @@ class LocalQwenClient:
 class ResearchOrchestrator:
     def __init__(self, session, proposer, max_experiments=3, max_calls=4,
                  max_seconds=120, patience=2, retry_delay=1, emit=None,
-                 cloud_proposer=None, max_cloud_calls=0):
+                 cloud_proposer=None, max_cloud_calls=0, jev_gate=None, max_jev_calls=1):
         if type(max_experiments) is not int or not 1 <= max_experiments <= 20:
             raise ValueError('max_experiments must be an integer between 1 and 20.')
         if type(max_calls) is not int or not 0 <= max_calls <= 30:
             raise ValueError('max_calls must be an integer between 0 and 30.')
         if type(max_cloud_calls) is not int or not 0 <= max_cloud_calls <= 3:
             raise ValueError('max_cloud_calls must be an integer between 0 and 3.')
+        if type(max_jev_calls) is not int or max_jev_calls not in (0, 1):
+            raise ValueError('max_jev_calls must be 0 or 1.')
         if not math.isfinite(max_seconds) or max_seconds <= 0 or patience < 1 or retry_delay < 0:
             raise ValueError('Invalid time, patience or retry budget.')
         self.session, self.proposer = session, proposer
@@ -112,6 +114,7 @@ class ResearchOrchestrator:
         self.max_seconds, self.patience = max_seconds, patience
         self.retry_delay, self.emit = retry_delay, emit
         self.cloud_proposer, self.max_cloud_calls = cloud_proposer, max_cloud_calls
+        self.jev_gate, self.max_jev_calls = jev_gate, max_jev_calls
         self.used = False
 
     def run(self):
@@ -202,7 +205,36 @@ class ResearchOrchestrator:
         cloud_calls = 0
         cloud_usage = {'prompt_tokens': 0, 'completion_tokens': 0}
         cloud_usage_complete = True
-        if status == 'escalation_required' and self.cloud_proposer is not None:
+        jev_calls = 0
+        gate_decision = {'source': 'rules', 'allow_cloud': None, 'reason': 'not_evaluated'}
+        cloud_eligible = (status == 'escalation_required' and self.cloud_proposer is not None
+                          and self.max_cloud_calls > 0 and len(experiments) < self.max_experiments
+                          and time.monotonic() - started < self.max_seconds)
+        if cloud_eligible:
+            gate_decision = {'source': 'rules', 'allow_cloud': True, 'reason': 'rule_escalation'}
+            if self.jev_gate is not None and self.max_jev_calls > 0:
+                jev_calls += 1  # Failed attempts still consume the explicit Jev call budget.
+                gate_state = {'trigger': reason, 'local_calls': calls,
+                    'remaining_experiments': self.max_experiments - len(experiments),
+                    'remaining_cloud_calls': self.max_cloud_calls,
+                    'remaining_seconds': round(max(0, self.max_seconds - (time.monotonic() - started)), 2),
+                    'validation_history': [{'model': item['model'], 'parameters': item['parameters'],
+                        'validation_f1': item['validation_f1']} for item in experiments[-5:]]}
+                try:
+                    gate_decision = self.jev_gate(gate_state, timeout=min(10, max(0.001,
+                        self.max_seconds - (time.monotonic() - started))))
+                    if type(gate_decision.get('allow_cloud')) is not bool:
+                        raise ValueError('Invalid escalation decision.')
+                except Exception:
+                    gate_decision = {'source': 'rule_fallback', 'allow_cloud': True,
+                                     'reason': 'jev_gate_failed', 'usage': {}}
+            elif self.jev_gate is not None:
+                gate_decision = {'source': 'rule_fallback', 'allow_cloud': True,
+                                 'reason': 'jev_call_budget', 'usage': {}}
+            record('escalation_gate', decision=gate_decision)
+            if not gate_decision['allow_cloud']:
+                status, reason = 'stopped', 'jev_declined'
+        if cloud_eligible and gate_decision['allow_cloud']:
             record('cloud_escalation_requested', reason=reason)
             while cloud_calls < self.max_cloud_calls and len(experiments) < self.max_experiments:
                 remaining = self.max_seconds - (time.monotonic() - started)
@@ -264,6 +296,8 @@ class ResearchOrchestrator:
                   'reported_cloud_tokens': cloud_usage,
                   'cloud_usage_complete': cloud_usage_complete,
                   'cloud_cost': None,
+                  'jev_calls': jev_calls, 'escalation_gate': gate_decision,
+                  'total_remote_calls': cloud_calls + jev_calls, 'jev_cost': None,
                   'elapsed_seconds': time.monotonic() - started, 'events': events,
                   'test_evaluated': False}
         record('research_stopped', status=status, reason=reason)
@@ -282,10 +316,21 @@ def main():
     parser.add_argument('--enable-cloud', action='store_true', help='Opt in to paid DeepSeek recovery')
     parser.add_argument('--max-cloud-calls', type=int, default=1)
     parser.add_argument('--cloud-model', default=os.environ.get('DEEPSEEK_MODEL', 'deepseek-flash'))
+    parser.add_argument('--enable-jev', action='store_true', help='Opt in to a paid Jev cloud-escalation gate')
+    parser.add_argument('--max-jev-calls', type=int, choices=[0, 1], default=1)
+    parser.add_argument('--jev-threshold', type=float, default=0.75)
+    parser.add_argument('--jev-model', default='jev-latest')
     parser.add_argument('--database', default='artifacts/research.sqlite3', help='Persistent task database')
     parser.add_argument('--feature-decisions', default='{}', help='Explicit feature review JSON')
     parser.add_argument('--output', required=True, help='New JSON result file; existing files are never overwritten')
     args = parser.parse_args()
+    if args.enable_jev and (not args.enable_cloud or args.max_cloud_calls < 1):
+        parser.error('--enable-jev requires cloud recovery enabled with a positive call budget.')
+    jev_gate = None
+    if args.enable_jev:
+        from jev_router import JevClient, JevGate
+        jev_gate = JevGate(JevClient(os.environ.get('TYPESAFE_API_KEY') or os.environ.get('JEV_API_KEY', ''),
+                                    model=args.jev_model), threshold=args.jev_threshold)
     cloud = DeepSeekClient(os.environ.get('DEEPSEEK_API_KEY', ''), model=args.cloud_model) if args.enable_cloud else None
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -305,7 +350,8 @@ def main():
         result = ResearchOrchestrator(session, LocalQwenClient(args.base_url, args.model),
                     max_experiments=args.max_experiments, max_calls=args.max_calls,
                     max_seconds=args.max_seconds, emit=emit,
-                    cloud_proposer=cloud, max_cloud_calls=args.max_cloud_calls if args.enable_cloud else 0).run()
+                    cloud_proposer=cloud, max_cloud_calls=args.max_cloud_calls if args.enable_cloud else 0,
+                    jev_gate=jev_gate, max_jev_calls=args.max_jev_calls).run()
         result['task_id'] = task_id
         store.save_report(task_id, result)
         with output.open('x', encoding='utf-8') as file:

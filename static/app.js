@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = {csv: '', task: null, selected: localStorage.getItem('evoresearch-task') || '', busy: false, refreshing: false};
+const state = {csv: '', task: null, selected: localStorage.getItem('evoresearch-task') || '', busy: false, refreshing: false, serverReady: false};
 const reasons = {experiment_budget: '实验预算已用完，保留验证集表现最好的方案。', local_call_budget: '本地调用预算已用完，需要进一步诊断。', validation_plateau: '验证指标连续未改善，需要进一步诊断。', local_unavailable: '本地模型暂不可用，已保留现有结果。', time_budget: '时间预算已用完，停止发起新工作。', experiment_failed: '候选训练失败，请查看实验记录。'};
 const modelNames = {logistic_regression: '逻辑回归', random_forest: '随机森林'};
 function toast(message, error = false) {
@@ -48,12 +48,12 @@ async function loadFile(file) {
 }
 function activeJob(task = state.task) { return ['queued', 'running'].includes(task?.research_job?.state); }
 function updateControls() {
-  $('start-research').disabled = !state.csv || state.busy || activeJob();
+  $('start-research').disabled = !state.serverReady || !state.csv || state.busy || activeJob();
   const hasResult = state.task?.experiments.some(exp => exp.status === 'success');
-  $('finalize').disabled = state.busy || !hasResult || state.task?.state !== 'open' || activeJob() || state.task?.risk_report?.blocked || state.task?.experiments.some(exp => exp.status === 'running');
+  $('finalize').disabled = !state.serverReady || state.busy || !hasResult || state.task?.state !== 'open' || activeJob() || state.task?.risk_report?.blocked || state.task?.experiments.some(exp => exp.status === 'running');
   $('use-demo').disabled = state.busy;
-  $('start-existing').disabled = state.busy || !state.task || state.task.state !== 'open' || state.task.experiments.length > 0 || Boolean(state.task.research_job) || state.task.risk_report?.blocked;
-  $('save-review').disabled = state.busy || !state.task || state.task.state !== 'open' || state.task.experiments.length > 0 || activeJob();
+  $('start-existing').disabled = !state.serverReady || state.busy || !state.task || state.task.state !== 'open' || state.task.experiments.length > 0 || Boolean(state.task.research_job) || state.task.risk_report?.blocked;
+  $('save-review').disabled = !state.serverReady || state.busy || !state.task || state.task.state !== 'open' || state.task.experiments.length > 0 || activeJob();
 }
 function element(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
 function render(task) {
@@ -194,11 +194,11 @@ $('confirm-final').onclick = async () => {
   finally { state.busy = false; updateControls(); }
 };
 async function initialize() {
-  try { await api('/health'); $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); }
-  catch { $('connection').textContent = '服务连接失败'; toast('无法连接后端，请确认本地服务正在运行。', true); }
+  try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review']) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
+  catch (error) { state.serverReady = false; updateControls(); $('connection').textContent = '服务未就绪'; toast(error.message || '无法连接后端，请确认本地服务正在运行。', true); }
 }
 setInterval(async () => {
-  if (!state.selected || state.refreshing || document.hidden) return;
+  if (!state.serverReady || !state.selected || state.refreshing || document.hidden) return;
   state.refreshing = true;
   try { const task = await api(`/tasks/${state.selected}`); if (task.id === state.selected) render(task); $('connection').textContent = '● 服务已连接'; }
   catch { $('connection').textContent = '连接中断 · 正在重试'; }

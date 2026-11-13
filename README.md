@@ -128,3 +128,51 @@ Research claims are saved in SQLite, only one job is admitted per API database a
 Verification: all 26 Python tests pass, node --check static/app.js passes, and real HTTP + existing local Qwen completed two experiments with one model request, best validation macro-F1 0.9333, zero cloud calls, no test evaluation. Finalization while running returned 409. Evidence: artifacts/workbench_http_verification.json. Background job tests use real sklearn training and injected deterministic proposals; the HTTP smoke run used actual Qwen.
 
 Browser verification script: node tests/verify_workbench.mjs (uses installed Edge, no npm install). It is intended to verify demo/start/render/reload/mobile layouts and save screenshots, but the headless Edge renderer crashed in the current execution environment, so visual/browser-interaction acceptance is still pending. No successful screenshots or browser E2E pass are claimed. Existing Starlette/httpx deprecation warning remains; it does not fail the suite.
+
+## Feature-integrity review (current guarded service: port 8002)
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn api:create_app --factory --host 127.0.0.1 --port 8002
+```
+
+Open http://127.0.0.1:8002/ . Old running processes on 8000/8001 do not hot-load the new Python guard. The updated frontend checks that the backend exposes /tasks/{task_id}/review and disables mutations when connected to an older backend. This capability check is for accidental version mismatch, not authentication. Do not use old API processes for research conclusions.
+
+Task creation now returns risk_report. Candidate signals include ID-like names, near-unique ordered integers, exact matches to training labels, strong binary training association, and unique numeric features that perfectly separate classes when sorted on the TRAIN split. These are review candidates, not proofs of leakage. All statistical checks use training rows only; validation/test values and metrics do not determine exclusion.
+
+known_leaks.json records the exact SHA-256 of the bundled t1 CSV and target/column/source evidence. bench/make_tasks.py explicitly sorts by target before assigning record_id and then shuffles; this exact fixture is confirmed leakage, not a generic ban on that column name. An altered/renamed copy can still trigger generic candidate review. Clearing the linter does not prove the absence of all possible leakage.
+
+POST /tasks/{id}/review accepts:
+
+```json
+{"decisions":{"record_id":{"action":"exclude","reason":"Generated after sorting by the target, as documented in the generator."}}}
+```
+
+Every candidate needs an explicit exclude/keep decision and a reason. Confirmed leakage cannot be kept. No feature is silently dropped. The effective feature exclusions and review reasons are persisted per task and attached to experiment results, applying identically to every model. Decisions become immutable once any experiment has been attempted; create a new task to change the feature policy. Both manual experiments and autonomous research are blocked until review is cleared, without consuming experiment slots. Final test access also checks the guard.
+
+The workbench shows the review panel, supports saving decisions and starting a reviewed fresh task. Existing tasks with experiments cannot start autonomous research; the page explains that a new task is required. Old experiment results are not overwritten: their current risk is labeled, and suspicious historical F1 is not presented as the current best reliable result. Old configuration cannot be retroactively changed.
+
+CLI: task_store.py review TASK_ID --decisions JSON; executor.py and orchestrator.py accept --feature-decisions JSON. Source CSV files, benchmark thresholds, generation scripts, missing-sentinel/unit policies, and evaluation splits were not changed. The current holdout F1 is not comparable to the benchmark's 5-fold CV reference threshold.
+
+Verification: 34 Python tests passed, including named and renamed leakage candidates, legitimate strong predictors that can be explicitly kept, immutable decisions, legacy-history labeling, train-only signals, and manual/autonomous API gates. Real HTTP evidence in artifacts/integrity_http_verification.json: t1 unreviewed endpoints returned 409, zero attempts consumed, reviewed record_id exclusion trained logistic regression with validation macro-F1 0.9440, later policy edits returned 409. No test evaluation and no model API calls. Browser visual acceptance remains pending from the earlier Edge renderer limitation.
+
+## Optional Jev cloud-escalation gate
+
+Jev routing is now implemented in jev_router.py and the CLI orchestrator. It is OFF by default. The separately contributed generic jev_client.py is preserved and is not used by this gate. Source protocol: https://docs.typesafe.ai/api/system-one.md and https://docs.typesafe.ai/introduction/quickstart.md .
+
+The existing rules first decide whether escalation is eligible: local planner failure/stagnation, unused experiment slots, positive cloud-request budget, a configured expert and remaining time. Only then can a single Jev request evaluate whether a cloud diagnosis is likely to help. It sends a Noul question using POST https://api.typesafe.ai/v1/systemone and reads answers.worth_cloud_diagnosis.noul. Default threshold 0.75 is a configurable engineering choice, not a validated calibration or guaranteed economic optimum.
+
+Jev receives only bounded validation/model history, trigger and remaining budgets. No CSV rows, test metrics, feature-review reasons or keys enter its state. It cannot authorize more experiments, final-test access, feature-policy changes or arbitrary tools. If it declines, the task stops with jev_declined. Errors/invalid responses or a zero Jev-call budget fall back to the original rule-based cloud decision, within the same cloud limits. There are no automatic transport retries or HTTP redirects.
+
+Use an interactive PowerShell terminal:
+
+```powershell
+.\tools\run-jev.ps1
+```
+
+The helper securely prompts for a TypeSafe/Jev key and a DeepSeek key, uses them only in the process environment and restores prior values. Default CSV is bench/tasks/t3_clean/data.csv; defaults permit at most one Jev request and one DeepSeek request, and neither is guaranteed to be needed. To compare the rule baseline, use the existing cloud workflow without --enable-jev. The script does not modify execution policy or model service settings. The existing local Qwen service is still required for normal proposals.
+
+CLI flags: --enable-cloud --enable-jev --max-cloud-calls 1 --max-jev-calls 1 --jev-threshold 0.75. Jev keys are read from TYPESAFE_API_KEY or JEV_API_KEY; DeepSeek uses DEEPSEEK_API_KEY. --jev-model can select a pinned model for reproducibility (default jev-latest); the returned model is recorded in the gate event. Jev requires an explicitly enabled cloud-recovery branch. The web workbench remains local-only and does not enable these paid routes.
+
+Reports distinguish jev_calls, cloud_calls (DeepSeek), total_remote_calls and escalation_gate source (jev/rules/rule_fallback), probability and reported usage. jev_cost and cloud_cost remain null (unknown), not zero. Request/byte limits are not dollar caps. This introduces another paid provider; no cost or quality improvement is claimed before matched-budget comparison.
+
+Verification: complete suite 40 tests passed; new tests cover the official HTTP shape via a temporary loopback server, sanitized HTTP failures, probability validation, deny/allow/fallback and hard-budget precedence with actual sklearn training. No new packages or paid requests. Live Jev authentication/inference has NOT been verified because no project Jev key is configured. tools/run-jev.ps1 is syntax-checked only; its interactive key flow has not been executed by Codex. Earlier GitHub ZIP is a prior snapshot and does not contain this new optional router.

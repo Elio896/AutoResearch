@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 
-const base = process.env.EVORESEARCH_TEST_URL || 'http://127.0.0.1:8001';
+const base = process.env.EVORESEARCH_TEST_URL || 'http://127.0.0.1:8002';
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'evoresearch-edge-'));
 const browser = spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', [
   '--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run', '--no-default-browser-check',

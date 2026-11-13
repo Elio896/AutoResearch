@@ -20,3 +20,8 @@ research_agent_bundle.zip
 
 # 临时 token
 .gh_token
+
+# 对比/打包工作区（含第三方副本与 zip 产物），不入库
+compare/
+*.zip
+
