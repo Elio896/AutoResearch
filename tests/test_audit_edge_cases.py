@@ -30,6 +30,24 @@ class VersionChainAuditTests(unittest.TestCase):
         proposal['parameters']['depth'] = 99
         self.assertEqual(version.proposal['parameters']['depth'], 3)
 
+    def test_empty_and_single_version_chains_are_safe(self):
+        chain = VersionChain(run_id='audit')
+        self.assertIsNone(chain.best())
+        self.assertIsNone(chain.current)
+        version = chain.add({'model': 'lr'}, 0.5)
+        self.assertIs(chain.rollback(version.version_id), version)
+        self.assertEqual(len(chain.versions), 1)
+
+    def test_concurrent_dumps_leave_a_complete_json_file(self):
+        chain = VersionChain(run_id='audit')
+        for score in (0.4, 0.7, 0.3):
+            chain.add({'model': 'rf', 'parameters': {'depth': score}}, score)
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'versions.json'
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(lambda _: chain.dump(path), range(32)))
+            self.assertEqual(len(json.loads(path.read_text(encoding='utf-8'))['versions']), 3)
+
 
 class RedTeamAuditTests(unittest.TestCase):
     def test_rejects_tiny_model_supplied_threshold(self):

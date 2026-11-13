@@ -31,6 +31,14 @@ from pathlib import Path
 
 ACTIVE = 'active'
 ROLLED_BACK = 'rolled_back'
+_WRITE_LOCKS: dict[str, threading.RLock] = {}
+_WRITE_LOCKS_GUARD = threading.Lock()
+
+
+def _write_lock(path: Path) -> threading.RLock:
+    key = str(path.resolve())
+    with _WRITE_LOCKS_GUARD:
+        return _WRITE_LOCKS.setdefault(key, threading.RLock())
 
 
 def _new_id(seed: str) -> str:
@@ -108,11 +116,15 @@ class VersionChain:
             target = self.get(to_version_id)
             if target is None:
                 raise ValueError(f'未知版本: {to_version_id}')
-            leaving = self.get(self.current_id) if self.current_id else None
-            if leaving is not None and leaving.version_id != target.version_id:
-                if leaving.status == ACTIVE:
-                    leaving.status = ROLLED_BACK
-                    leaving.note = (leaving.note + ' | ' if leaving.note else '') + (
+            retained = set()
+            node = target
+            while node is not None and node.version_id not in retained:
+                retained.add(node.version_id)
+                node = self.get(node.parent_id)
+            for version in self.versions:
+                if version.status == ACTIVE and version.version_id not in retained:
+                    version.status = ROLLED_BACK
+                    version.note = (version.note + ' | ' if version.note else '') + (
                         reason or 'rolled back')
             target.status = ACTIVE
             self.current_id = target.version_id
@@ -165,20 +177,21 @@ class VersionChain:
     @staticmethod
     def _atomic_write(path: Path, text: str) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                    mode='w', encoding='utf-8', newline='\n', dir=path.parent,
-                    prefix=f'.{path.name}.', suffix='.tmp', delete=False) as stream:
-                temporary_path = Path(stream.name)
-                stream.write(text)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary_path, path)
-            return path
-        finally:
-            if temporary_path is not None and temporary_path.exists():
-                temporary_path.unlink()
+        with _write_lock(path):
+            temporary_path = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                        mode='w', encoding='utf-8', newline='\n', dir=path.parent,
+                        prefix=f'.{path.name}.', suffix='.tmp', delete=False) as stream:
+                    temporary_path = Path(stream.name)
+                    stream.write(text)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary_path, path)
+                return path
+            finally:
+                if temporary_path is not None and temporary_path.exists():
+                    temporary_path.unlink()
 
     def dump(self, path: str | Path) -> Path:
         p = Path(path)

@@ -2,6 +2,8 @@
 import json
 import unittest
 
+import pandas as pd
+
 from redteam import BlueTeam, RedTeam, seed_stability, split_shift
 
 
@@ -84,9 +86,22 @@ class CheckTests(unittest.TestCase):
         self.assertFalse(result.passed)
 
     def test_split_shift_detects_drift(self):
-        session = FakeSession([0.60, 0.80])
+        class SplitSession(FakeSession):
+            def __init__(self):
+                super().__init__([0.60, 0.80])
+                self.y = pd.Series([0, 1] * 40)
+                self.seed = 42
+                self.train_indices = list(range(48))
+                self.validation_indices = list(range(48, 64))
+
+        session = SplitSession()
+        original_train = list(session.train_indices)
+        original_validation = list(session.validation_indices)
         result = split_shift(session, {'model': 'rf', 'parameters': {}}, threshold=0.02)
         self.assertTrue(result.passed)
+        self.assertEqual(session.train_indices, original_train)
+        self.assertEqual(session.validation_indices, original_validation)
+        self.assertEqual(session.seed, 42)
 
 
 class BlueTeamTests(unittest.TestCase):
@@ -122,6 +137,14 @@ class BlueTeamTests(unittest.TestCase):
         summary = BlueTeam().summarize([])
         self.assertFalse(summary['should_rollback'])
         self.assertEqual(summary['conclusion'], 'no_check_ran')
+
+    def test_split_shift_without_split_controls_is_unsupported(self):
+        verdict = BlueTeam().verify({
+            'claim': 'split sensitive',
+            'check_kind': 'split_shift',
+            'check_params': {'proposal': {'model': 'rf'}},
+        }, FakeSession())
+        self.assertIsNone(verdict['supported'])
 
 
 if __name__ == '__main__':

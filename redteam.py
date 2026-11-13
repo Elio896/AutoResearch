@@ -129,19 +129,37 @@ def feature_ablation(session, proposal: dict, drop: str | None = None,
 
 
 def split_shift(session, proposal: dict, threshold: float = 0.02) -> CheckResult:
-    """换两个验证 seed 复跑，观察划分敏感性。"""
+    """只重划训练/验证集，固定保留集不动，检查验证划分敏感性。"""
     threshold = _validate_threshold('split_shift', threshold)
-    if not hasattr(session, 'seed'):
-        raise ValueError('session does not support seed changes')
+    if not all(hasattr(session, name) for name in
+               ('seed', 'y', 'train_indices', 'validation_indices')):
+        raise ValueError('session does not expose a mutable train/validation split')
+    from sklearn.model_selection import train_test_split
+
     original_seed = session.seed
+    original_train = session.train_indices
+    original_validation = session.validation_indices
+    development = list(original_train) + list(original_validation)
+    validation_fraction = len(original_validation) / len(development)
     base_seed = 42 if original_seed is None else original_seed
     try:
-        session.seed = base_seed
-        a = _run_with_seed(session, proposal)
-        session.seed = base_seed + 1
-        b = _run_with_seed(session, proposal)
+        scores = []
+        for split_seed in (base_seed, base_seed + 1):
+            train_indices, validation_indices = train_test_split(
+                development,
+                test_size=validation_fraction,
+                random_state=split_seed,
+                stratify=session.y.iloc[development],
+            )
+            session.train_indices = list(train_indices)
+            session.validation_indices = list(validation_indices)
+            session.seed = base_seed
+            scores.append(_run_with_seed(session, proposal))
     finally:
+        session.train_indices = original_train
+        session.validation_indices = original_validation
         session.seed = original_seed
+    a, b = scores
     drift = abs(a - b)
     return CheckResult(
         passed=drift > threshold,

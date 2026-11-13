@@ -50,6 +50,7 @@ class VersionChainTests(unittest.TestCase):
         self.chain.rollback(v1.version_id, reason='back to baseline')
         self.assertEqual(self.chain.current_id, v1.version_id)
         self.assertEqual(v1.status, ACTIVE)
+        self.assertEqual(v2.status, ROLLED_BACK)
         self.assertEqual(v3.status, ROLLED_BACK)
         # 回滚到任意历史版本后，有效路径只剩 v1
         self.assertEqual([v.version_id for v in self.chain.active_path()], [v1.version_id])

@@ -224,3 +224,17 @@ One explicitly requested real request returned HTTP401. Not connected. Key was i
 
 ## Jev real connection succeeded 2026-11-13 (codex)
 New user-provided credential passed one real call: jev-1.14.0,348 input/24 outputreportedtokens, probability0.51 for connectivity state. No secret persisted. Process ended, so CLI/web do not retain this key. This validates authentication and inference only, not whole research gate, financial cost or effectiveness.
+
+## 夜间攻坚完成 2026-11-14 02:25 (yuyu + cat)
+
+本轮按 loop 流水线推进 M0-M4，全部通过并提交。当前 135 tests passed。
+
+- M0 (9053462): 补齐轨迹九项里最后一项 04 干预 diff。schema 原本不接受 replace/path 且禁止 baseline 空 diff，cat 做了向后兼容扩展（保留 field 格式 + 新增路径格式）。校验器 3 轮 FAIL 0 / WARN 0。
+- M1 (evoundo.py): EvoUndo 版本链。一次实验 = 一个版本，Reviewer 判退步就把 current 指回历史最优；不重训、不删版本，被抛弃的一代标 rolled_back 留作"假设被否证"的证据。t2 实测：5 版本 1 回滚，v_8cf6 (0.2984) -> v_52e3 (0.6984)。版本树落 JSON + 零依赖 HTML。
+- M2 (redteam.py): 红蓝对抗。红队质疑必须命名注册表里的 check（seed_stability / feature_ablation / split_shift），否则记 rejected_vague 丢弃——不接受无法证伪的怀疑。蓝队只按数字判，模型不参与。实测红队指"类1 F1 远低于类0"，feature_ablation 测出 0.0262 > 0.02，判 claims_upheld。修掉一个假回滚 bug：当前就是最优时记 rollback_skipped 并标 redteam_suspect，不假装成功。
+- M3 (tools/run_selfiter.py): 自迭代 A/B。实验组 3 轮稳定 0.7143，对照组在 0.2994/0.6620/0.5426 之间跳——稳定性提升；但 local_tokens 反涨 +1363（经验变长撑大 prompt）。如实记为"未观察到成本下降"。
+- M4 (model_router.py): 模型分层。Scientist 留 7B，RedTeam 降到 3B（找茬比提方案简单），Analyst/Manager/Reviewer 纯代码 0 token。3B 红队仍能产出合格质疑。
+
+JEV: 之前那串 key 是错的（106 字符, sha256 b3a5aeb2, 恒 401）。真 key 107 字符 sha256 b0bdc4f6, 与供应商指纹一致，实测 HTTP 200, model jev-1.14.0, probability 0.67, usage 432/24。key 只放在用户环境变量 TYPESAFE_API_KEY，未入库。jev_local.py 保留为无 key 时的同协议本地实现。
+
+已知未做：网页端未接新功能；token 台账未把 RedTeam 的 3B 用量并进 summary（ModelRouter 有记录，但 research_loop 的 local_tokens 只算 Scientist）。
