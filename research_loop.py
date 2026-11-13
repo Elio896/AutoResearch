@@ -25,6 +25,7 @@ from pathlib import Path
 
 from agents import Analyst, Budget, Experimenter, Manager, Reviewer, Scientist
 from evoundo import VersionChain
+from redteam import BlueTeam, RedTeam
 from experience import ExperienceStore, advice_lines
 from trajectory import TrajectoryWriter, canonical_json, diff_proposals
 
@@ -76,6 +77,9 @@ class ResearchLoop:
         self.task_name = task_name or 'task'
         # EvoUndo：每次实验都是一个版本，退步就回滚到历史最优
         self.chain = VersionChain(run_id='')
+        # 红蓝对抗：结束前质疑一次最优结果（可关）
+        self.redteam = RedTeam(proposer) if proposer else None
+        self.blueteam = BlueTeam()
         self.run_id = run_id or uuid.uuid4().hex
         self.trajectory = TrajectoryWriter(
             trajectory_dir or Path('artifacts') / 'trajectory' / self.run_id,
@@ -216,7 +220,63 @@ class ResearchLoop:
                 self._record('reviewer_flag', reason='suspicious_improvement',
                              score=verdict['candidate_score'])
 
+        # 收工前让红队试一次：这个"最优"经不经得起换 seed 的检验
+        self._adversarial_check(best, profile)
         return self._finish('completed', stop_reason, started)
+
+    def _adversarial_check(self, best: dict | None, profile: dict) -> None:
+        """红队质疑 → 蓝队用代码检验 → 成立就回滚。全程不让模型判好坏。"""
+        if self.redteam is None or best is None:
+            return
+        history = [{'model': r.get('model'), 'score': r.get('validation_score', r.get('validation_f1'))}
+                   for r in getattr(self, '_results', [])[-4:]]
+        remaining = max(5.0, self.budget.max_seconds - self.used['seconds'])
+        try:
+            claims, rejected = self.redteam.propose(profile, best, history, timeout=min(45.0, remaining))
+        except Exception as exc:                        # noqa: BLE001
+            self._record('redteam_error', reason=str(exc)[:200])
+            return
+        for item in rejected:
+            self._record('redteam_rejected', **item)
+        if not claims:
+            return
+
+        proposal = {'model': best.get('model'), 'parameters': best.get('parameters') or {}}
+        session = self.session
+        # 检验器需要重新跑实验，把最优方案挂到 session 上供它们取
+        try:
+            setattr(session, 'best_proposal', proposal)
+        except Exception:                               # noqa: BLE001
+            pass
+
+        verdicts = []
+        for claim in claims:
+            self._record('redteam_claim', **claim)
+            verdict = self.blueteam.verify(claim, session)
+            verdicts.append(verdict)
+            self._record('blueteam_verdict', claim=claim['claim'],
+                         check_kind=claim['check_kind'],
+                         supported=verdict.get('supported'),
+                         measured=verdict.get('measured'),
+                         threshold=verdict.get('threshold'),
+                         detail=verdict.get('detail') or verdict.get('reason'))
+
+        summary = self.blueteam.summarize(verdicts)
+        self._record('adversarial_summary', **summary)
+        if summary.get('should_rollback'):
+            target = self.chain.best()
+            if target is not None:
+                if target.version_id == self.chain.current_id:
+                    # 当前就是最优、前面没有更可信的一代可回。
+                    # 如实记「跳过」，并把它标成可疑——不许假装回滚成功。
+                    self._record('rollback_skipped', reason='no_prior_version',
+                                 current=target.version_id,
+                                 claim=summary.get('reason', '')[:160])
+                    target.note = (target.note + ' | ' if target.note else '') + 'redteam_suspect'
+                else:
+                    self.chain.rollback(target.version_id, reason='redteam: ' + str(summary.get('reason', ''))[:80])
+                    self._record('rollback', from_version=self.chain.current_id,
+                                 to_version=target.version_id, reason='redteam')
 
     # ---------- 子步骤 ----------
     @property

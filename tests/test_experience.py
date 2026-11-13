@@ -119,7 +119,10 @@ class LearningLoopTests(unittest.TestCase):
         seen = {}
 
         def capture(messages, timeout=None):
-            seen['text'] = messages[-1]['content']
+            text = messages[-1]['content']
+            # 只有 Scientist 的提案请求带 Allowed:；红队也会调同一个 proposer
+            if 'Allowed:' in text:
+                seen['text'] = text
             return {'message': {'content': '{"model":"logistic_regression","parameters":{},"hypothesis":"test hypothesis","expected_direction":"up","falsifier":"验证分数没有提升"}'},
                     'prompt_eval_count': 5, 'eval_count': 5}
 
