@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from agents import Analyst, Budget, Experimenter, Manager, Reviewer, Scientist
+from evoundo import VersionChain
 from experience import ExperienceStore, advice_lines
 from trajectory import TrajectoryWriter, canonical_json, diff_proposals
 
@@ -73,6 +74,8 @@ class ResearchLoop:
         self.events = []
         self.experience = experience
         self.task_name = task_name or 'task'
+        # EvoUndo：每次实验都是一个版本，退步就回滚到历史最优
+        self.chain = VersionChain(run_id='')
         self.run_id = run_id or uuid.uuid4().hex
         self.trajectory = TrajectoryWriter(
             trajectory_dir or Path('artifacts') / 'trajectory' / self.run_id,
@@ -122,6 +125,12 @@ class ResearchLoop:
 
         # 3) Experimenter 跑 baseline
         best = self._run_experiment(plan)
+        # baseline 也是一个版本（v1），漏了它版本链就少一代
+        if best is not None:
+            self.chain.add(
+                proposal={'model': best.get('model'), 'parameters': best.get('parameters') or {}},
+                score=float(best.get('validation_score', best.get('validation_f1', 0.0))),
+                note='baseline')
         if best is None:
             return self._finish('failed', 'baseline_failed', started)
         self._persist_round(best, plan, started, baseline_round=True)
@@ -184,11 +193,23 @@ class ResearchLoop:
                                 baseline=best)
 
             accepted = verdict['verdict'] in ('improved', 'kept') and not verdict.get('reverted', False)
+            # EvoUndo：把这次实验登记成一个版本
+            version = self.chain.add(
+                proposal={'model': result.get('model'), 'parameters': result.get('parameters') or {}},
+                score=float(result.get('validation_score', result.get('validation_f1', 0.0))),
+                note=verdict['verdict'])
             if accepted:
                 best, no_improvement = result, 0
                 self._best_round_id = self.trajectory.last_round_id or self._best_round_id
             else:
                 no_improvement += 1
+                # 退步就真的回到最优那一代（不重训、不删版本）
+                target = self.chain.best()
+                if target is not None and target.version_id != self.chain.current_id:
+                    self.chain.rollback(target.version_id, reason=f"{verdict['verdict']}: delta={verdict['delta']}")
+                    self._record('rollback', from_version=version.version_id,
+                                 to_version=target.version_id,
+                                 reason=verdict['verdict'], delta=verdict['delta'])
 
             # 可疑的"大幅提升"：不采信，但要留下证据
             if verdict['suspicious']:
@@ -541,6 +562,17 @@ class ResearchLoop:
             'trajectory_run_id': self.run_id,
             'trajectory_dir': str(self.trajectory.run_dir.resolve()),
         }
+        # EvoUndo：版本树落盘（JSON 给程序看，HTML 给人看）
+        if getattr(self, 'chain', None) is not None and self.chain.versions:
+            self.chain.run_id = self.chain.run_id or self.run_id
+            evo_dir = Path('artifacts') / 'evoundo' / self.chain.run_id
+            self.chain.dump(evo_dir / 'versions.json')
+            self.chain.render_html(evo_dir / 'versions.html')
+            summary['evoundo_dir'] = str(evo_dir.resolve())
+            summary['evoundo_versions'] = len(self.chain.versions)
+            summary['evoundo_rollbacks'] = self.chain.to_dict()['rollbacks']
+            summary['evoundo_current'] = self.chain.current_id
+            summary['evoundo_best'] = self.chain.best().version_id if self.chain.best() else None
         self._record('finish', summary=summary)
         self._learn(results, best, results[0] if results else None)
         return {'summary': summary, 'events': self.events, 'experiments': results}
