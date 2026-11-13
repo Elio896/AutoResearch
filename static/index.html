@@ -27,6 +27,7 @@
       <label class="field-label" for="selection-metric">优化指标</label><select id="selection-metric"><option value="f1_macro">宏平均 F1（通用分类）</option><option value="f1_minority">少数类 F1（二分类）</option></select><label class="field-label" for="positive-label">少数类标签（选择少数类 F1 时生效）</label><input id="positive-label" value="1" maxlength="200">
       <div class="budget-heading">给这次研究留多少空间？</div>
       <div class="two-fields"><label>实验次数<input id="max-experiments" type="number" value="3" min="1" max="20" required></label><label>模型调用次数<input id="max-calls" type="number" value="4" min="0" max="10" required></label></div>
+      <label class="field-label" for="baseline-policy">研究策略</label><select id="baseline-policy"><option value="logreg">逻辑回归起步，Agent 探索</option><option value="fixed_search">稳健基线优先，剩余额度 Agent 探索</option></select><small>稳健模式先用最多 3 次训练建立基线，均计入预算。</small>
       <label class="field-label" for="max-seconds">运行时间预算（秒）</label><input id="max-seconds" type="number" min="5" max="600" value="120" required>
       <p class="field-hint">到时停止发起新工作，正在进行的训练不会被强制中断。</p>
       <button id="start-research" class="primary" disabled type="submit">新建并启动研究 <span>↗</span></button></form>

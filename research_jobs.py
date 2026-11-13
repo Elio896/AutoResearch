@@ -11,16 +11,18 @@ class ResearchJobs:
         self.store = store
         self.proposer_factory = proposer_factory or (lambda: LocalQwenClient())
 
-    def start(self, task_id, max_calls=4, max_seconds=120):
+    def start(self, task_id, max_calls=4, max_seconds=120, baseline_policy="logreg"):
         if type(max_calls) is not int or not 0 <= max_calls <= 10:
             raise ValueError('Local call budget must be 0..10.')
         if type(max_seconds) not in (int, float) or not 5 <= max_seconds <= 600:
             raise ValueError('Time budget must be 5..600 seconds.')
+        if baseline_policy not in ('logreg', 'fixed_search'):
+            raise ValueError('Unknown baseline policy.')
         task = self.store.show(task_id)
         if task['state'] != 'open' or task['experiments'] or task['research_report']:
             raise RuntimeError('Autonomous research requires a fresh open task.')
         self.store._session(task)  # Verify data/runtime before reserving a job.
-        settings = {'max_calls': max_calls, 'max_seconds': max_seconds}
+        settings = {'max_calls': max_calls, 'max_seconds': max_seconds, 'baseline_policy': baseline_policy}
         with self.store.connection() as db:
             db.execute('BEGIN IMMEDIATE')
             current = db.execute('SELECT state FROM tasks WHERE id=?', (task_id,)).fetchone()
@@ -49,7 +51,7 @@ class ResearchJobs:
             report = ResearchOrchestrator(
                 StoredResearchSession(self.store, task_id, research_token=token), self.proposer_factory(),
                 max_experiments=task['max_experiments'], max_calls=settings['max_calls'],
-                max_seconds=settings['max_seconds'],
+                max_seconds=settings['max_seconds'], baseline_policy=settings.get('baseline_policy', 'logreg'),
                 emit=lambda event: self.store.add_event(task_id, event)).run()
             report['task_id'] = task_id
             self.store.save_report(task_id, report)

@@ -188,3 +188,10 @@ New tasks default to `f1_macro`. For binary minority-class research (including t
 ## Planning context v2
 
 The planner now receives bounded, anonymized training-only aggregate evidence and per-class validation precision/recall/F1. A prompt recommends trying an untried model family; no estimator is silently substituted for the model proposal. Reports label this policy `context_v2`. The executor remains LLM-free. Experiment/call/time caps are unchanged. See docs/evaluation/context_v2_20261113/REPORT.md for development comparisons against preserved v1 evidence. Qwen3B t2 mean minority F1 improved .3903 to .5508; fixed search remained better at .5854, and t3 did not improve. These are development-validation observations, not independent test results or proof of Jev benefits.
+
+
+## Optional baseline-first policy
+
+Choose `fixed_search` using the web research-strategy selector, `ResearchInput.baseline_policy` or CLI `--baseline-policy fixed_search`. Default remains `logreg`. The baseline plan is default logistic regression, balanced100-tree random forest, balanced logistic regression C=.1. Every fit consumes the same task experiment budget; time limits apply before new fits. With3 successful allowed fits and sufficient time, this reproduces the fixed-search candidate set with zero LLM calls. With4+ fits, remaining budget is available for validated Agent proposals. With1 or2 fits, only the corresponding prefix runs. Job settings and reports preserve the selected policy. This provides a validation candidate floor only when the baseline plan finishes; it does not guarantee test-set superiority or a new Agent gain.
+
+Frozen transfer evidence is in docs/evaluation/frozen_transfer_20261113/REPORT.md. All validation selections were locked before one final test per arm/split. Wine tied; the2 synthetic tasks favored fixed search. Do not retune on these test scores and label the same splits unseen.

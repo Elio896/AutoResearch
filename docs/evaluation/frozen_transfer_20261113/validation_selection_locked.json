@@ -1,0 +1,110 @@
+[
+  {
+    "task": "wine",
+    "seed": 101,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_001"
+  },
+  {
+    "task": "wine",
+    "seed": 101,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_001"
+  },
+  {
+    "task": "wine",
+    "seed": 202,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_003"
+  },
+  {
+    "task": "wine",
+    "seed": 202,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "wine",
+    "seed": 303,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_001"
+  },
+  {
+    "task": "wine",
+    "seed": 303,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_001"
+  },
+  {
+    "task": "synthetic_imbalance",
+    "seed": 101,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_imbalance",
+    "seed": 101,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_imbalance",
+    "seed": 202,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_imbalance",
+    "seed": 202,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_003"
+  },
+  {
+    "task": "synthetic_imbalance",
+    "seed": 303,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_imbalance",
+    "seed": 303,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_mixed",
+    "seed": 101,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_mixed",
+    "seed": 101,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_001"
+  },
+  {
+    "task": "synthetic_mixed",
+    "seed": 202,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_001"
+  },
+  {
+    "task": "synthetic_mixed",
+    "seed": 202,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_mixed",
+    "seed": 303,
+    "arm": "fixed_search",
+    "selected_experiment_id": "exp_002"
+  },
+  {
+    "task": "synthetic_mixed",
+    "seed": 303,
+    "arm": "qwen_3b",
+    "selected_experiment_id": "exp_002"
+  }
+]

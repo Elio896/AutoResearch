@@ -1,0 +1,194 @@
+{
+  "protocol": {
+    "created_at": "2026-11-13T22:40:43.454224+08:00",
+    "policy": "context_v2",
+    "commit": "0820c1ed4dba6d8b4f90488d09ed2b01bb8d27b0",
+    "source_sha256": {
+      "executor.py": "f54c4c1cc6059bc32e3ce7d50971eb3e9368f7cfc517713e4980f48ee2543cf2",
+      "orchestrator.py": "cb16793ce581995c366148f8e483cf06c95b01e0db8b5ff0986db9c221a1b950",
+      "task_store.py": "18de4a5f8ed27bc6909ac93d29135618522a3b76e5f386512563fcff74abed2f"
+    },
+    "versions": {
+      "numpy": "2.5.4",
+      "pandas": "3.1.1",
+      "scikit-learn": "1.9.1"
+    },
+    "seeds": [
+      101,
+      202,
+      303
+    ],
+    "budget": {
+      "max_experiments": 3,
+      "max_calls": 2,
+      "max_seconds": 60
+    },
+    "model": "qwen2.5:3b-instruct-q4_K_M",
+    "model_tags": {
+      "models": [
+        {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "model": "qwen2.5:7b-instruct-q4_K_M",
+          "modified_at": "2026-11-13T22:08:45.8487371+08:00",
+          "size": 4683087332,
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen2",
+            "families": [
+              "qwen2"
+            ],
+            "parameter_size": "7.6B",
+            "quantization_level": "Q4_K_M",
+            "context_length": 32768,
+            "embedding_length": 3584,
+            "runner": "ggml"
+          },
+          "capabilities": [
+            "completion",
+            "tools"
+          ]
+        },
+        {
+          "name": "qwen2.5:0.5b",
+          "model": "qwen2.5:0.5b",
+          "modified_at": "2026-11-13T21:43:26.0620259+08:00",
+          "size": 397821319,
+          "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen2",
+            "families": [
+              "qwen2"
+            ],
+            "parameter_size": "494.03M",
+            "quantization_level": "Q4_K_M",
+            "context_length": 32768,
+            "embedding_length": 896,
+            "runner": "ggml"
+          },
+          "capabilities": [
+            "completion",
+            "tools"
+          ]
+        },
+        {
+          "name": "qwen2.5:3b-instruct-q4_K_M",
+          "model": "qwen2.5:3b-instruct-q4_K_M",
+          "modified_at": "2026-11-13T21:42:13.3254369+08:00",
+          "size": 1929912432,
+          "digest": "357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen2",
+            "families": [
+              "qwen2"
+            ],
+            "parameter_size": "3.1B",
+            "quantization_level": "Q4_K_M",
+            "context_length": 32768,
+            "embedding_length": 2048,
+            "runner": "ggml"
+          },
+          "capabilities": [
+            "completion",
+            "tools"
+          ]
+        }
+      ]
+    },
+    "generation_seed": 8675309,
+    "tasks": [
+      "wine",
+      "synthetic_imbalance",
+      "synthetic_mixed"
+    ],
+    "fixed_proposals": [
+      [
+        "logistic_regression",
+        {}
+      ],
+      [
+        "random_forest",
+        {
+          "n_estimators": 100,
+          "class_weight": "balanced"
+        }
+      ],
+      [
+        "logistic_regression",
+        {
+          "C": 0.1,
+          "class_weight": "balanced"
+        }
+      ]
+    ],
+    "test_access": "after ALL validation winners selected, once per arm/task/split; claims written before evaluation",
+    "limits": [
+      "first transfer evaluation, small sample",
+      "wine is real built-in data; other2 are synthetic, not enterprise evidence",
+      "repeated splits overlap: not independent test samples",
+      "same caps not equal actual use; time is soft launch limit",
+      "no policy changes after protocol write; no causal or population significance claim"
+    ]
+  },
+  "summary": [
+    {
+      "task": "wine",
+      "arm": "fixed_search",
+      "mean_validation_score": 0.9811875367430923,
+      "mean_test_score": 0.9811875367430923,
+      "mean_seconds": 0.243785433331747,
+      "local_calls": 0,
+      "reported_tokens": 0
+    },
+    {
+      "task": "wine",
+      "arm": "qwen_3b",
+      "mean_validation_score": 0.9811875367430923,
+      "mean_test_score": 0.9811875367430923,
+      "mean_seconds": 2.076413600001009,
+      "local_calls": 6,
+      "reported_tokens": 4348
+    },
+    {
+      "task": "synthetic_imbalance",
+      "arm": "fixed_search",
+      "mean_validation_score": 0.4439696106362773,
+      "mean_test_score": 0.4047095876364169,
+      "mean_seconds": 0.25093889999940683,
+      "local_calls": 0,
+      "reported_tokens": 0
+    },
+    {
+      "task": "synthetic_imbalance",
+      "arm": "qwen_3b",
+      "mean_validation_score": 0.3892145135566188,
+      "mean_test_score": 0.2992080644133747,
+      "mean_seconds": 0.9394813666670719,
+      "local_calls": 6,
+      "reported_tokens": 3899
+    },
+    {
+      "task": "synthetic_mixed",
+      "arm": "fixed_search",
+      "mean_validation_score": 0.8894359472442527,
+      "mean_test_score": 0.8922333893823332,
+      "mean_seconds": 0.2692232666668133,
+      "local_calls": 0,
+      "reported_tokens": 0
+    },
+    {
+      "task": "synthetic_mixed",
+      "arm": "qwen_3b",
+      "mean_validation_score": 0.8412292944288106,
+      "mean_test_score": 0.8203881125570537,
+      "mean_seconds": 0.9870231666670103,
+      "local_calls": 6,
+      "reported_tokens": 4253
+    }
+  ]
+}

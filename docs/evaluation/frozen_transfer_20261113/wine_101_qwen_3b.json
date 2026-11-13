@@ -1,0 +1,318 @@
+{
+  "task": "wine",
+  "seed": 101,
+  "arm": "qwen_3b",
+  "dataset_sha256": "2cce9d95d7d95165a591b84741d15d3300f6862a135a28e3601249d42f303056",
+  "split_sha256": "d446695aec038c6f7ab9be3f12ecbef0f23884811a8963b06f7a8cc13fe81ffd",
+  "metric": "f1_macro",
+  "validation_score": 0.9717813051146384,
+  "selected_experiment_id": "exp_001",
+  "elapsed_seconds": 4.38459420000072,
+  "report": {
+    "status": "escalation_required",
+    "stop_reason": "local_call_budget",
+    "experiments": [
+      {
+        "status": "success",
+        "experiment_id": "exp_001",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000
+        },
+        "seed": 101,
+        "dataset_sha256": "2cce9d95d7d95165a591b84741d15d3300f6862a135a28e3601249d42f303056",
+        "split_sizes": {
+          "train": 106,
+          "validation": 36,
+          "test": 36
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.9717813051146384,
+        "validation_accuracy": 0.9722222222222222,
+        "duration_seconds": 0.017716100002871826,
+        "validation_class_metrics": [
+          {
+            "class_id": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 12
+          },
+          {
+            "class_id": 1,
+            "precision": 1.0,
+            "recall": 0.9285714285714286,
+            "f1": 0.9629629629629629,
+            "support": 14
+          },
+          {
+            "class_id": 2,
+            "precision": 0.9090909090909091,
+            "recall": 1.0,
+            "f1": 0.9523809523809523,
+            "support": 10
+          }
+        ],
+        "selection_metric": "f1_macro",
+        "pos_label": "1",
+        "validation_score": 0.9717813051146384
+      },
+      {
+        "status": "success",
+        "experiment_id": "exp_002",
+        "model": "logistic_regression",
+        "parameters": {
+          "max_iter": 1000,
+          "C": 0.01,
+          "class_weight": "balanced"
+        },
+        "seed": 101,
+        "dataset_sha256": "2cce9d95d7d95165a591b84741d15d3300f6862a135a28e3601249d42f303056",
+        "split_sizes": {
+          "train": 106,
+          "validation": 36,
+          "test": 36
+        },
+        "excluded_columns": [],
+        "feature_review": {},
+        "validation_f1": 0.9717813051146384,
+        "validation_accuracy": 0.9722222222222222,
+        "duration_seconds": 0.016023799998947652,
+        "validation_class_metrics": [
+          {
+            "class_id": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "support": 12
+          },
+          {
+            "class_id": 1,
+            "precision": 1.0,
+            "recall": 0.9285714285714286,
+            "f1": 0.9629629629629629,
+            "support": 14
+          },
+          {
+            "class_id": 2,
+            "precision": 0.9090909090909091,
+            "recall": 1.0,
+            "f1": 0.9523809523809523,
+            "support": 10
+          }
+        ],
+        "selection_metric": "f1_macro",
+        "pos_label": "1",
+        "validation_score": 0.9717813051146384
+      }
+    ],
+    "best_experiment_id": "exp_001",
+    "model_calls": 2,
+    "reported_local_tokens": {
+      "prompt": 1371,
+      "completion": 72
+    },
+    "cloud_calls": 0,
+    "reported_cloud_tokens": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0
+    },
+    "cloud_usage_complete": true,
+    "cloud_cost": null,
+    "jev_calls": 0,
+    "escalation_gate": {
+      "source": "rules",
+      "allow_cloud": null,
+      "reason": "not_evaluated"
+    },
+    "total_remote_calls": 0,
+    "jev_cost": null,
+    "planning_policy": "context_v2",
+    "training_profile": {
+      "scope": "training_only",
+      "rows": 106,
+      "features": 13,
+      "numeric_features": 13,
+      "categorical_features": 0,
+      "missing_fraction": 0.0,
+      "constant_features": 0,
+      "class_count": 3,
+      "class_counts": [
+        {
+          "class_id": 0,
+          "count": 35
+        },
+        {
+          "class_id": 1,
+          "count": 43
+        },
+        {
+          "class_id": 2,
+          "count": 28
+        }
+      ],
+      "class_counts_truncated": false,
+      "selection_metric": "f1_macro",
+      "positive_class_id": null
+    },
+    "elapsed_seconds": 4.384505400001217,
+    "events": [
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_001",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000
+          },
+          "seed": 101,
+          "dataset_sha256": "2cce9d95d7d95165a591b84741d15d3300f6862a135a28e3601249d42f303056",
+          "split_sizes": {
+            "train": 106,
+            "validation": 36,
+            "test": 36
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.9717813051146384,
+          "validation_accuracy": 0.9722222222222222,
+          "duration_seconds": 0.017716100002871826,
+          "validation_class_metrics": [
+            {
+              "class_id": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 12
+            },
+            {
+              "class_id": 1,
+              "precision": 1.0,
+              "recall": 0.9285714285714286,
+              "f1": 0.9629629629629629,
+              "support": 14
+            },
+            {
+              "class_id": 2,
+              "precision": 0.9090909090909091,
+              "recall": 1.0,
+              "f1": 0.9523809523809523,
+              "support": 10
+            }
+          ],
+          "selection_metric": "f1_macro",
+          "pos_label": "1",
+          "validation_score": 0.9717813051146384
+        }
+      },
+      {
+        "event": "proposal_accepted",
+        "attempt": 1,
+        "proposal": {
+          "model": "logistic_regression",
+          "parameters": {
+            "C": 0.01,
+            "max_iter": 1000,
+            "class_weight": "balanced"
+          }
+        }
+      },
+      {
+        "event": "experiment",
+        "result": {
+          "status": "success",
+          "experiment_id": "exp_002",
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 1000,
+            "C": 0.01,
+            "class_weight": "balanced"
+          },
+          "seed": 101,
+          "dataset_sha256": "2cce9d95d7d95165a591b84741d15d3300f6862a135a28e3601249d42f303056",
+          "split_sizes": {
+            "train": 106,
+            "validation": 36,
+            "test": 36
+          },
+          "excluded_columns": [],
+          "feature_review": {},
+          "validation_f1": 0.9717813051146384,
+          "validation_accuracy": 0.9722222222222222,
+          "duration_seconds": 0.016023799998947652,
+          "validation_class_metrics": [
+            {
+              "class_id": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "support": 12
+            },
+            {
+              "class_id": 1,
+              "precision": 1.0,
+              "recall": 0.9285714285714286,
+              "f1": 0.9629629629629629,
+              "support": 14
+            },
+            {
+              "class_id": 2,
+              "precision": 0.9090909090909091,
+              "recall": 1.0,
+              "f1": 0.9523809523809523,
+              "support": 10
+            }
+          ],
+          "selection_metric": "f1_macro",
+          "pos_label": "1",
+          "validation_score": 0.9717813051146384
+        }
+      },
+      {
+        "event": "proposal_rejected",
+        "attempt": 2,
+        "reason": "Invalid or duplicate JSON. Use the exact allowed schema and parameter ranges."
+      },
+      {
+        "event": "research_stopped",
+        "status": "escalation_required",
+        "reason": "local_call_budget"
+      }
+    ],
+    "test_evaluated": false
+  },
+  "test_evaluated": true,
+  "final": {
+    "test_class_metrics": [
+      {
+        "class_id": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 12
+      },
+      {
+        "class_id": 1,
+        "precision": 1.0,
+        "recall": 0.9285714285714286,
+        "f1": 0.9629629629629629,
+        "support": 14
+      },
+      {
+        "class_id": 2,
+        "precision": 0.9090909090909091,
+        "recall": 1.0,
+        "f1": 0.9523809523809523,
+        "support": 10
+      }
+    ],
+    "selection_metric": "f1_macro",
+    "pos_label": "1",
+    "test_score": 0.9717813051146384,
+    "experiment_id": "exp_001",
+    "test_f1": 0.9717813051146384,
+    "test_accuracy": 0.9722222222222222
+  }
+}

@@ -160,7 +160,7 @@ $('research-form').onsubmit = async event => {
     const created = await api('/tasks', {csv_text: state.csv, target: $('target-column').value, metric: $('selection-metric').value, pos_label: $('positive-label').value, max_experiments: Number($('max-experiments').value)});
     await loadTask(created.task_id); await refreshTasks();
     if (state.task.risk_report?.blocked) { toast('数据风险需要审核，暂未启动训练。'); return; }
-    await api(`/tasks/${created.task_id}/research`, {max_calls: Number($('max-calls').value), max_seconds: Number($('max-seconds').value)});
+    await api(`/tasks/${created.task_id}/research`, {baseline_policy: $('baseline-policy').value, max_calls: Number($('max-calls').value), max_seconds: Number($('max-seconds').value)});
     await loadTask(created.task_id); toast('研究已启动，实验结果会自动更新。');
   } catch (error) { toast(error.message, true); }
   finally { state.busy = false; updateControls(); }
@@ -183,7 +183,7 @@ $('save-review').onclick = async () => {
 $('start-existing').onclick = async () => {
   if (state.busy || $('start-existing').disabled) return;
   const id = state.selected; state.busy = true; updateControls();
-  try { await api(`/tasks/${id}/research`, {max_calls: Number($('max-calls').value), max_seconds: Number($('max-seconds').value)}); await loadTask(id); toast('已启动此任务的自主研究。'); }
+  try { await api(`/tasks/${id}/research`, {baseline_policy: $('baseline-policy').value, max_calls: Number($('max-calls').value), max_seconds: Number($('max-seconds').value)}); await loadTask(id); toast('已启动此任务的自主研究。'); }
   catch (error) { toast(error.message, true); }
   finally { state.busy = false; updateControls(); }
 };
@@ -196,7 +196,7 @@ $('confirm-final').onclick = async () => {
   finally { state.busy = false; updateControls(); }
 };
 async function initialize() {
-  try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review'] || !schema.components?.schemas?.TaskInput?.properties?.metric) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
+  try { await api('/health'); const schema = await api('/openapi.json'); if (!schema.paths?.['/tasks/{task_id}/review'] || !schema.components?.schemas?.TaskInput?.properties?.metric || !schema.components?.schemas?.ResearchInput?.properties?.baseline_policy) throw new Error('当前服务未加载泄漏守卫，请打开 http://127.0.0.1:8002/ 或重启新版服务。'); state.serverReady = true; $('connection').textContent = '● 服务已连接'; const tasks = await refreshTasks(); const selected = tasks.find(task => task.id === state.selected) || tasks.at(-1); if (selected) await loadTask(selected.id); updateControls(); }
   catch (error) { state.serverReady = false; updateControls(); $('connection').textContent = '服务未就绪'; toast(error.message || '无法连接后端，请确认本地服务正在运行。', true); }
 }
 setInterval(async () => {

@@ -1,4 +1,5 @@
 """Loopback-only development API for persistent classification tasks."""
+from typing import Literal
 from pathlib import Path
 import sqlite3
 import uuid
@@ -28,6 +29,7 @@ class ExperimentInput(BaseModel):
 
 
 class ResearchInput(BaseModel):
+    baseline_policy: Literal["logreg", "fixed_search"] = "logreg"
     model_config = ConfigDict(extra='forbid')
     max_calls: int = Field(default=4, ge=0, le=10, strict=True)
     max_seconds: int = Field(default=120, ge=5, le=600, strict=True)
@@ -114,7 +116,7 @@ def create_app(data_directory=None):
 
     @app.post('/tasks/{task_id}/research', status_code=202)
     def start_research(task_id: str, body: ResearchInput, background_tasks: BackgroundTasks):
-        result = invoke(lambda: jobs.start(task_id, body.max_calls, body.max_seconds))
+        result = invoke(lambda: jobs.start(task_id, body.max_calls, body.max_seconds, body.baseline_policy))
         background_tasks.add_task(jobs.execute, task_id)
         return result
 
