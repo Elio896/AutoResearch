@@ -37,6 +37,7 @@ def main():
     p.add_argument('--enable-cloud', action='store_true', help='本地卡住时允许调云端（需 DEEPSEEK_API_KEY）')
     p.add_argument('--max-cloud-calls', type=int, default=1)
     p.add_argument('--enable-jev', action='store_true', help='云端升级前先问 JEV 值不值得（需 TYPESAFE_API_KEY）')
+    p.add_argument('--enable-qwen-router', action='store_true', help='让本地千问决定要不要调云端、调哪个档')
     p.add_argument('--experience', default='', help='经验库 jsonl 路径（留空则不启用）')
     p.add_argument('--task-name', default='')
     p.add_argument('--output')
@@ -71,6 +72,13 @@ def main():
         from jev_router import JevGate
         jev_gate = JevGate.auto()
 
+    # 千问路由：让本地 3B 自己判要不要调云端
+    qwen_router = None
+    if args.enable_qwen_router:
+        from qwen_router import decide_escalation
+        qwen_router = lambda state: decide_escalation(  # noqa: E731
+            state, base_url=args.base_url, model=args.small_model)
+
     loop = ResearchLoop(session, proposer=proposer, budget=budget,
                         patience=args.patience, emit=emit,
                         experience=ExperienceStore(args.experience) if args.experience else None,
@@ -78,7 +86,8 @@ def main():
                         small_proposer=small_proposer,
                         cloud_proposer=cloud_proposer,
                         jev_gate=jev_gate,
-                        max_cloud_calls=args.max_cloud_calls)
+                        max_cloud_calls=args.max_cloud_calls,
+                        qwen_router=qwen_router)
     result = loop.run()
 
     print('\n=== summary ===')

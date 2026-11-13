@@ -63,7 +63,7 @@ class ResearchLoop:
                  experience: ExperienceStore | None = None, task_name: str = '',
                  trajectory_dir: str | Path | None = None, run_id: str | None = None,
                  small_proposer=None, cloud_proposer=None, jev_gate=None,
-                 max_cloud_calls: int = 0):
+                 max_cloud_calls: int = 0, qwen_router=None):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -86,6 +86,8 @@ class ResearchLoop:
         self.cloud_scientist = Scientist(cloud_proposer, self.allowed) if cloud_proposer else None
         self.jev_gate = jev_gate
         self.max_cloud_calls = max_cloud_calls
+        # 千问路由：本地小模型自己决定「要不要调云端、调哪个档」
+        self.qwen_router = qwen_router
         self.blueteam = BlueTeam()
         self.run_id = run_id or uuid.uuid4().hex
         self.trajectory = TrajectoryWriter(
@@ -249,7 +251,32 @@ class ResearchLoop:
                          used=self.used['cloud_calls'], cap=self.max_cloud_calls)
             return False
 
-        # 1) JEV 判据：这一步本身就是"该不该花云端钱"的证据
+        # 1a) 千问路由：本地小模型先判「要不要调、调哪个档」
+        if self.qwen_router is not None:
+            router_state = {
+                'task': self.task_name,
+                'trigger': 'validation_plateau',
+                'experiments_used': self.used['experiments'],
+                'best_validation_score': float(best.get('validation_score', best.get('validation_f1', 0.0))),
+                'recent_scores': [round(float(r.get('validation_score', r.get('validation_f1', 0.0))), 4)
+                                  for r in self._experiments[-4:]],
+                'remaining_cloud_calls': self.max_cloud_calls - self.used['cloud_calls'],
+                'rows': int(profile.get('rows', 0) or 0),
+            }
+            try:
+                decision = self.qwen_router(router_state)
+            except Exception as exc:                    # noqa: BLE001
+                self._record('qwen_router_error', reason=str(exc)[:200])
+                decision = {'need_cloud': False, 'reason': 'router_exception'}
+            self._record('qwen_router_decision',
+                         need_cloud=decision.get('need_cloud'),
+                         model=decision.get('model'),
+                         reason=decision.get('reason'),
+                         source=decision.get('source'))
+            if not decision.get('need_cloud'):
+                return False
+
+        # 1b) JEV 判据：这一步本身就是"该不该花云端钱"的证据
         if self.jev_gate is not None:
             state = {
                 'task': self.task_name,
