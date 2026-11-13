@@ -34,18 +34,52 @@ class CheckResult:
                 'samples': self.samples}
 
 
+DEFAULT_THRESHOLDS = {
+    'seed_stability': 0.02,
+    'feature_ablation': 0.01,
+    'split_shift': 0.02,
+}
+MAX_THRESHOLD = 1.0
+MAX_SEEDS = 20
+
+
+def _validate_threshold(kind: str, value) -> float:
+    minimum = DEFAULT_THRESHOLDS[kind]
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f'threshold must be in [{minimum}, {MAX_THRESHOLD}] for {kind}')
+    try:
+        threshold = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(
+            f'threshold must be in [{minimum}, {MAX_THRESHOLD}] for {kind}') from exc
+    if not math.isfinite(threshold) or threshold < minimum or threshold > MAX_THRESHOLD:
+        raise ValueError(f'threshold must be in [{minimum}, {MAX_THRESHOLD}] for {kind}')
+    return threshold
+
+
+def _run_with_seed(session, proposal: dict) -> float:
+    result = session.run(model=proposal['model'], parameters=proposal.get('parameters') or {})
+    score = float(result.get('validation_score', result.get('validation_f1', 0.0)))
+    if not math.isfinite(score):
+        raise ValueError('validation score must be finite')
+    return score
+
+
 def seed_stability(session, proposal: dict, n_seeds: int = 3, threshold: float = 0.02) -> CheckResult:
     """换 seed 重跑，看分数波动。std > threshold 说明这个分数不稳。"""
+    if type(n_seeds) is not int or not 2 <= n_seeds <= MAX_SEEDS:
+        raise ValueError(f'n_seeds must be between 2 and {MAX_SEEDS}')
+    threshold = _validate_threshold('seed_stability', threshold)
     scores = []
+    has_seed = hasattr(session, 'seed')
     original_seed = getattr(session, 'seed', None)
     try:
         for i in range(n_seeds):
-            if hasattr(session, 'seed'):
-                session.seed = (original_seed or 42) + i
-            result = session.run(model=proposal['model'], parameters=proposal.get('parameters') or {})
-            scores.append(float(result.get('validation_score', result.get('validation_f1', 0.0))))
+            if has_seed:
+                session.seed = (42 if original_seed is None else original_seed) + i
+            scores.append(_run_with_seed(session, proposal))
     finally:
-        if original_seed is not None and hasattr(session, 'seed'):
+        if has_seed:
             session.seed = original_seed
     std = statistics.pstdev(scores) if len(scores) > 1 else 0.0
     return CheckResult(
@@ -63,11 +97,16 @@ def feature_ablation(session, proposal: dict, drop: str | None = None,
 
     drop=None 时去掉了第一个特征列——调用方应该显式给，这里只做兜底。
     """
+    threshold = _validate_threshold('feature_ablation', threshold)
     x = getattr(session, 'x', None)
     if x is None or not hasattr(session, 'y'):
         return CheckResult(False, 0.0, threshold, 'session 没有 x/y，无法做消融')
     columns = list(x.columns)
-    target_col = drop if drop in columns else columns[0]
+    if not columns:
+        raise ValueError('session has no feature columns')
+    if drop is not None and drop not in columns:
+        raise ValueError(f'unknown feature column: {drop}')
+    target_col = drop if drop is not None else columns[0]
     base = session.run(model=proposal['model'], parameters=proposal.get('parameters') or {})
     base_score = float(base.get('validation_score', base.get('validation_f1', 0.0)))
 
@@ -90,11 +129,19 @@ def feature_ablation(session, proposal: dict, drop: str | None = None,
 
 
 def split_shift(session, proposal: dict, threshold: float = 0.02) -> CheckResult:
-    """重跑两次并比较——用来暴露"划分敏感"。真正的换划分需要 executor 支持，这里只做同配置复跑。"""
-    first = session.run(model=proposal['model'], parameters=proposal.get('parameters') or {})
-    second = session.run(model=proposal['model'], parameters=proposal.get('parameters') or {})
-    a = float(first.get('validation_score', first.get('validation_f1', 0.0)))
-    b = float(second.get('validation_score', second.get('validation_f1', 0.0)))
+    """换两个验证 seed 复跑，观察划分敏感性。"""
+    threshold = _validate_threshold('split_shift', threshold)
+    if not hasattr(session, 'seed'):
+        raise ValueError('session does not support seed changes')
+    original_seed = session.seed
+    base_seed = 42 if original_seed is None else original_seed
+    try:
+        session.seed = base_seed
+        a = _run_with_seed(session, proposal)
+        session.seed = base_seed + 1
+        b = _run_with_seed(session, proposal)
+    finally:
+        session.seed = original_seed
     drift = abs(a - b)
     return CheckResult(
         passed=drift > threshold,
@@ -149,7 +196,7 @@ class RedTeam:
                 {'role': 'user', 'content': prompt},
             ], timeout=timeout)
         except Exception:
-            return [], []
+            return [], [{'reason': 'proposer_error'}]
         content = ((response.get('message') or {}).get('content') or '').strip()
         return self.parse(content)
 
@@ -176,15 +223,26 @@ class RedTeam:
             if not claim:
                 rejected.append({'reason': 'empty_claim', 'check_kind': kind})
                 continue
-            threshold = item.get('threshold', 0.02)
-            if not isinstance(threshold, (int, float)) or isinstance(threshold, bool) \
-                    or not math.isfinite(threshold) or threshold <= 0:
-                threshold = 0.02
+            threshold = item.get('threshold', DEFAULT_THRESHOLDS[kind])
+            if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
+                threshold = DEFAULT_THRESHOLDS[kind]
+            try:
+                threshold = _validate_threshold(kind, threshold)
+            except ValueError:
+                rejected.append({'reason': 'invalid_threshold', 'claim': claim, 'check_kind': kind})
+                continue
+            params = item.get('check_params') if isinstance(item.get('check_params'), dict) else {}
+            if kind == 'seed_stability' and 'n_seeds' in params:
+                n_seeds = params['n_seeds']
+                if type(n_seeds) is not int or not 2 <= n_seeds <= MAX_SEEDS:
+                    rejected.append({'reason': 'invalid_check_params', 'claim': claim,
+                                     'check_kind': kind})
+                    continue
             accepted.append({
                 'claim': claim[:300],
                 'check_kind': kind,
-                'check_params': item.get('check_params') if isinstance(item.get('check_params'), dict) else {},
-                'threshold': float(threshold),
+                'check_params': params,
+                'threshold': threshold,
             })
         return accepted, rejected
 
@@ -195,23 +253,39 @@ class BlueTeam:
     """只按数字判。模型不参与。"""
 
     def verify(self, claim: dict, session) -> dict:
+        if not isinstance(claim, dict):
+            return {'claim': claim, 'supported': None, 'reason': 'invalid_claim'}
         kind = claim.get('check_kind')
         fn = CHECKS.get(kind)
         if fn is None:
             return {'claim': claim, 'supported': None, 'reason': 'unknown_check'}
-        params = dict(claim.get('check_params') or {})
-        params.setdefault('threshold', claim.get('threshold', 0.02))
         try:
-            result = fn(session, params.pop('proposal', None) or self._proposal_from(session, claim), **params)
-        except TypeError:
-            # 参数不匹配：用最小参数再试一次
-            try:
-                result = fn(session, self._proposal_from(session, claim),
-                            threshold=claim.get('threshold', 0.02))
-            except Exception as exc:                     # noqa: BLE001
-                return {'claim': claim, 'supported': None, 'reason': f'check_error: {exc}'}
+            threshold = _validate_threshold(
+                kind, claim.get('threshold', DEFAULT_THRESHOLDS[kind]))
+        except ValueError as exc:
+            return {'claim': claim, 'supported': None, 'reason': str(exc)}
+        raw_params = claim.get('check_params') or {}
+        if not isinstance(raw_params, dict):
+            return {'claim': claim, 'supported': None, 'reason': 'invalid_check_params'}
+        allowed_params = {
+            'seed_stability': {'proposal', 'n_seeds'},
+            'feature_ablation': {'proposal', 'drop'},
+            'split_shift': {'proposal'},
+        }[kind]
+        if set(raw_params) - allowed_params:
+            return {'claim': claim, 'supported': None, 'reason': 'unknown_check_params'}
+        params = dict(raw_params)
+        if 'n_seeds' in params and (
+                type(params['n_seeds']) is not int
+                or not 2 <= params['n_seeds'] <= MAX_SEEDS):
+            return {'claim': claim, 'supported': None, 'reason': 'invalid_n_seeds'}
+        params.pop('proposal', None)
+        try:
+            proposal = self._proposal_from(session, claim)
+            result = fn(session, proposal, threshold=threshold, **params)
         except Exception as exc:                         # noqa: BLE001
-            return {'claim': claim, 'supported': None, 'reason': f'check_error: {exc}'}
+            return {'claim': claim, 'supported': None,
+                    'reason': f'check_error: {type(exc).__name__}'}
 
         return {
             'claim': claim,
@@ -224,12 +298,12 @@ class BlueTeam:
 
     @staticmethod
     def _proposal_from(session, claim: dict) -> dict:
-        proposal = (claim.get('check_params') or {}).get('proposal')
-        if isinstance(proposal, dict) and 'model' in proposal:
-            return proposal
         best = getattr(session, 'best_proposal', None)
         if isinstance(best, dict) and 'model' in best:
             return best
+        proposal = (claim.get('check_params') or {}).get('proposal')
+        if isinstance(proposal, dict) and 'model' in proposal:
+            return proposal
         raise ValueError('没有可检验的 proposal')
 
     def summarize(self, verdicts: list[dict]) -> dict:

@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 
 # 与 cloud_provider 的档位对齐
@@ -66,6 +67,13 @@ class JevHarness:
 
     def __init__(self, min_gain: float = 0.005, doom_loop_window: int = 3,
                  small_data_rows: int = 500):
+        if (isinstance(min_gain, bool) or not isinstance(min_gain, (int, float))
+                or not math.isfinite(min_gain) or min_gain <= 0):
+            raise ValueError('min_gain must be a positive finite number')
+        if type(doom_loop_window) is not int or doom_loop_window < 1:
+            raise ValueError('doom_loop_window must be a positive integer')
+        if type(small_data_rows) is not int or small_data_rows < 1:
+            raise ValueError('small_data_rows must be a positive integer')
         self.min_gain = min_gain
         self.doom_loop_window = doom_loop_window
         self.small_data_rows = small_data_rows
@@ -100,7 +108,10 @@ class JevHarness:
         gain = ctx.get('last_gain')
         if gain is None:
             return GateResult('completion_veto', True, 'no last gain')
-        if isinstance(gain, (int, float)) and 0 < gain < self.min_gain:
+        if (isinstance(gain, bool) or not isinstance(gain, (int, float))
+                or not math.isfinite(gain)):
+            return GateResult('completion_veto', False, 'invalid last gain - do not escalate')
+        if gain <= 0 or gain < self.min_gain:
             return GateResult('completion_veto', False,
                               f'last gain {gain:.4f} < {self.min_gain} - not worth spending')
         return GateResult('completion_veto', True, f'last gain {gain}')

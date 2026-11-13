@@ -20,7 +20,12 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import math
+import os
+import tempfile
+import threading
 import time
+import copy
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
@@ -54,27 +59,43 @@ class VersionChain:
         self.versions: list[Version] = []
         self.current_id: str | None = None
         self._seq = 0
+        self._lock = threading.RLock()
 
     # ---------- 写 ----------
     def add(self, proposal: dict, score: float, parent_id: str | None = None,
             note: str = '') -> Version:
         if not isinstance(proposal, dict):
             raise ValueError('proposal 必须是 dict')
-        score = float(score)
-        if not (0.0 <= score <= 1.5):          # 允许轻微超过 1（某些加权指标）
+        if isinstance(score, bool):
             raise ValueError(f'score 不合理: {score}')
-        self._seq += 1
-        version_id = _new_id(f'{self.run_id}:{self._seq}:{json.dumps(proposal, sort_keys=True)}')
-        version = Version(
-            version_id=version_id,
-            parent_id=parent_id if parent_id is not None else self.current_id,
-            proposal=dict(proposal),
-            score=score,
-            note=note,
-        )
-        self.versions.append(version)
-        self.current_id = version.version_id
-        return version
+        try:
+            score = float(score)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(f'score 不合理: {score}') from exc
+        if not math.isfinite(score) or not (0.0 <= score <= 1.5):
+            raise ValueError(f'score 不合理: {score}')
+        stored_proposal = copy.deepcopy(proposal)
+        try:
+            proposal_json = json.dumps(stored_proposal, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('proposal 必须可序列化为 JSON。') from exc
+
+        with self._lock:
+            parent = parent_id if parent_id is not None else self.current_id
+            if parent is not None and self.get(parent) is None:
+                raise ValueError(f'未知父版本: {parent}')
+            self._seq += 1
+            version_id = _new_id(f'{self.run_id}:{self._seq}:{proposal_json}')
+            version = Version(
+                version_id=version_id,
+                parent_id=parent,
+                proposal=stored_proposal,
+                score=score,
+                note=note,
+            )
+            self.versions.append(version)
+            self.current_id = version.version_id
+            return version
 
     def rollback(self, to_version_id: str, reason: str = '') -> Version:
         """把 current 指回指定版本。
@@ -83,27 +104,29 @@ class VersionChain:
         - 被离开的那一代标 rolled_back（**不删除**）
         - 目标版本如果之前被回滚过，重新激活
         """
-        target = self.get(to_version_id)
-        if target is None:
-            raise ValueError(f'未知版本: {to_version_id}')
-        leaving = self.get(self.current_id) if self.current_id else None
-        if leaving is not None and leaving.version_id != target.version_id:
-            if leaving.status == ACTIVE:
-                leaving.status = ROLLED_BACK
-                leaving.note = (leaving.note + ' | ' if leaving.note else '') + (
-                    reason or 'rolled back')
-        target.status = ACTIVE
-        self.current_id = target.version_id
-        return target
+        with self._lock:
+            target = self.get(to_version_id)
+            if target is None:
+                raise ValueError(f'未知版本: {to_version_id}')
+            leaving = self.get(self.current_id) if self.current_id else None
+            if leaving is not None and leaving.version_id != target.version_id:
+                if leaving.status == ACTIVE:
+                    leaving.status = ROLLED_BACK
+                    leaving.note = (leaving.note + ' | ' if leaving.note else '') + (
+                        reason or 'rolled back')
+            target.status = ACTIVE
+            self.current_id = target.version_id
+            return target
 
     # ---------- 读 ----------
     def get(self, version_id: str | None) -> Version | None:
-        if not version_id:
+        with self._lock:
+            if not version_id:
+                return None
+            for v in self.versions:
+                if v.version_id == version_id:
+                    return v
             return None
-        for v in self.versions:
-            if v.version_id == version_id:
-                return v
-        return None
 
     @property
     def current(self) -> Version | None:
@@ -111,9 +134,10 @@ class VersionChain:
 
     def best(self) -> Version | None:
         """历史最优（不论状态）。回滚的目标永远是它。"""
-        if not self.versions:
-            return None
-        return max(self.versions, key=lambda v: (v.score, v.created_at))
+        with self._lock:
+            if not self.versions:
+                return None
+            return max(self.versions, key=lambda v: (v.score, v.created_at))
 
     def active_path(self) -> list[Version]:
         """从根到 current 的链路——这条链就是"当前有效的研究史"。"""
@@ -127,26 +151,43 @@ class VersionChain:
 
     # ---------- 落盘 ----------
     def to_dict(self) -> dict:
-        best = self.best()
-        return {
-            'run_id': self.run_id,
-            'current_id': self.current_id,
-            'best_id': best.version_id if best else None,
-            'best_score': best.score if best else None,
-            'rollbacks': sum(1 for v in self.versions if v.status == ROLLED_BACK),
-            'versions': [v.to_dict() for v in self.versions],
-        }
+        with self._lock:
+            best = self.best()
+            return {
+                'run_id': self.run_id,
+                'current_id': self.current_id,
+                'best_id': best.version_id if best else None,
+                'best_score': best.score if best else None,
+                'rollbacks': sum(1 for v in self.versions if v.status == ROLLED_BACK),
+                'versions': [v.to_dict() for v in self.versions],
+            }
+
+    @staticmethod
+    def _atomic_write(path: Path, text: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                    mode='w', encoding='utf-8', newline='\n', dir=path.parent,
+                    prefix=f'.{path.name}.', suffix='.tmp', delete=False) as stream:
+                temporary_path = Path(stream.name)
+                stream.write(text)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, path)
+            return path
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
 
     def dump(self, path: str | Path) -> Path:
         p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2), encoding='utf-8')
-        return p
+        return self._atomic_write(
+            p, json.dumps(self.to_dict(), ensure_ascii=False, indent=2))
 
     def render_html(self, path: str | Path) -> Path:
         """零依赖版本树。给评委看"哪一代被抛弃了、为什么"。"""
         p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
         best = self.best()
         rows = []
         for v in self.versions:
@@ -167,6 +208,7 @@ class VersionChain:
                 f'<td>{v.status}</td>'
                 f'<td>{html.escape(v.note)}</td></tr>')
 
+        best_score = f'{best.score:.4f}' if best else '—'
         doc = f"""<!doctype html>
 <html lang="zh"><head><meta charset="utf-8">
 <title>EvoUndo · {html.escape(self.run_id)}</title>
@@ -187,7 +229,7 @@ code{{background:#f3f3f3;padding:1px 4px;border-radius:3px}}
 <h1>EvoUndo · 版本树</h1>
 <div class="meta">run: <code>{html.escape(self.run_id)}</code> ·
 当前: <code>{self.current_id or '—'}</code> ·
-最优: <code>{best.version_id if best else '—'}</code> ({best.score:.4f} if best else 0) ·
+最优: <code>{best.version_id if best else '—'}</code> ({best_score}) ·
 回滚次数: {sum(1 for v in self.versions if v.status == ROLLED_BACK)}</div>
 <table><thead><tr>
 <th></th><th>版本</th><th>父版本</th><th>模型</th><th>参数</th><th>分数</th><th>状态</th><th>备注</th>
@@ -196,5 +238,4 @@ code{{background:#f3f3f3;padding:1px 4px;border-radius:3px}}
 </tbody></table>
 <div class="legend">★ = 历史最优 · 绿底 = 当前有效 · 删除线 = 已被回滚（记录保留，它是"假设被否证"的证据）</div>
 </body></html>"""
-        p.write_text(doc, encoding='utf-8')
-        return p
+        return self._atomic_write(p, doc)

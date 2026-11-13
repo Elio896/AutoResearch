@@ -14,18 +14,54 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 
 DEFAULT_PATH = Path('artifacts') / 'experience.jsonl'
+_PATH_LOCKS: dict[str, threading.RLock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for(path: Path) -> threading.RLock:
+    key = str(path.resolve())
+    with _PATH_LOCKS_GUARD:
+        return _PATH_LOCKS.setdefault(key, threading.RLock())
 
 
 class ExperienceStore:
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path) if path else DEFAULT_PATH
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._thread_lock = _lock_for(self.path)
+        self._lock_path = self.path.with_name(self.path.name + '.lock')
+
+    @contextmanager
+    def _locked(self):
+        with self._thread_lock:
+            with self._lock_path.open('a+b') as lock_file:
+                lock_file.seek(0, os.SEEK_END)
+                if lock_file.tell() == 0:
+                    lock_file.write(b'\0')
+                    lock_file.flush()
+                lock_file.seek(0)
+                if os.name == 'nt':
+                    import msvcrt
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                    unlock = lambda: msvcrt.locking(
+                        lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                    unlock = lambda: fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                try:
+                    yield
+                finally:
+                    unlock()
 
     # ---------- 写 ----------
     def add(self, condition: dict, advice: str, evidence: dict,
@@ -33,8 +69,10 @@ class ExperienceStore:
         """加一条经验。没有证据的一律拒收。"""
         if not advice or not str(advice).strip():
             raise ValueError('advice 不能为空')
-        if not evidence:
+        if not isinstance(condition, dict) or not isinstance(evidence, dict) or not evidence:
             raise ValueError('经验必须带证据，不能凭空写')
+        if kind not in ('observed', 'contradicted'):
+            raise ValueError(f'不支持的经验类型: {kind}')
         record = {
             'id': uuid.uuid4().hex[:12],
             'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
@@ -48,8 +86,7 @@ class ExperienceStore:
             'success_count': 0,
             'contradicted_count': 0,
         }
-        with self.path.open('a', encoding='utf-8') as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + '\n')
+        self._append(record)
         return record['id']
 
     def contradict(self, record_id: str, evidence: dict, reason: str = '') -> str:
@@ -63,17 +100,48 @@ class ExperienceStore:
 
     # ---------- 读 ----------
     def all(self) -> list[dict]:
+        with self._locked():
+            return self._read_records()
+
+    def _read_records(self) -> list[dict]:
         if not self.path.exists():
             return []
-        out = []
-        for line in self.path.read_text(encoding='utf-8').splitlines():
+        records = []
+        by_id = {}
+        for line_number, line in enumerate(
+                self.path.read_text(encoding='utf-8').splitlines(), 1):
             if not line.strip():
                 continue
             try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue                      # 坏行跳过，不炸整库
-        return out
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f'经验库第 {line_number} 行 JSON 损坏') from exc
+            if not isinstance(item, dict):
+                raise ValueError(f'经验库第 {line_number} 行不是对象')
+            if item.get('event_type') == 'usage':
+                target = by_id.get(item.get('record_id'))
+                if target is None:
+                    raise ValueError(f'经验库第 {line_number} 行引用了未知经验')
+                target['used_count'] = int(target.get('used_count', 0)) + 1
+                counter = 'success_count' if item.get('improved') is True else 'contradicted_count'
+                target[counter] = int(target.get(counter, 0)) + 1
+                continue
+            record_id = item.get('id')
+            if not isinstance(record_id, str) or record_id in by_id:
+                raise ValueError(f'经验库第 {line_number} 行 id 缺失或重复')
+            item.setdefault('used_count', 0)
+            item.setdefault('success_count', 0)
+            item.setdefault('contradicted_count', 0)
+            by_id[record_id] = item
+            records.append(item)
+        return records
+
+    def _append(self, item: dict) -> None:
+        line = json.dumps(item, ensure_ascii=False) + '\n'
+        with self._locked():
+            with self.path.open('a', encoding='utf-8', newline='\n') as stream:
+                stream.write(line)
+                stream.flush()
 
     def match(self, profile: dict, limit: int = 5) -> list[dict]:
         """按数据画像挑相关经验。
@@ -81,16 +149,22 @@ class ExperienceStore:
         匹配规则刻意保守：**只认条件完全满足的经验**，条件越具体越优先。
         宁可少给建议，也不要给一条不适用的大道理。
         """
-        if not profile:
+        if not isinstance(profile, dict) or not profile:
             return []
-        contradicted = {r['condition'].get('contradicts') for r in self.all()
+        if type(limit) is not int or limit < 0:
+            raise ValueError('limit must be a nonnegative integer')
+        records = self.all()
+        contradicted = {r['condition'].get('contradicts') for r in records
                         if r.get('kind') == 'contradicted'}
+        active_ids = {r['id'] for r in self.active_pool()}
         scored = []
-        for record in self.all():
+        for record in records:
             if record.get('kind') == 'contradicted':
                 continue
             if record.get('id') in contradicted:
                 continue                      # 已被否证的，不再给建议
+            if record.get('id') not in active_ids:
+                continue
             cond = record.get('condition') or {}
             if not cond:
                 continue
@@ -111,7 +185,7 @@ class ExperienceStore:
         return actual == value
 
     def record_usage(self, record_id: str, improved: bool) -> dict | None:
-        """回写一次使用结果。
+        """追加一次使用结果，读取时再汇总计数。
 
         这是"自进化"能不能成立的关键：
         经验被用过之后，必须知道自己管不管用。否则经验库只会在膨胀，不会在进化。
@@ -122,37 +196,38 @@ class ExperienceStore:
           - 没用（甚至变差）就 contradicted_count +1
           - **不删记录**，只在 active_pool 里降权
         """
-        records = self.all()
-        target = None
-        for r in records:
-            if r.get('id') == record_id:
-                target = r
-                break
-        if target is None:
-            return None
-
-        target['used_count'] = int(target.get('used_count', 0)) + 1
-        if improved:
-            target['success_count'] = int(target.get('success_count', 0)) + 1
-        else:
-            target['contradicted_count'] = int(target.get('contradicted_count', 0)) + 1
-
-        # 重写整个文件（这个库很小，几条到几十条；用重写保证计数不会写乱）
-        self._rewrite(records)
-        return target
-
-    def _rewrite(self, records: list[dict]) -> None:
-        with self.path.open('w', encoding='utf-8') as fh:
-            for record in records:
-                fh.write(json.dumps(record, ensure_ascii=False) + '\n')
+        if type(improved) is not bool:
+            raise ValueError('improved must be a bool')
+        with self._locked():
+            records = self._read_records()
+            target = next((r for r in records if r.get('id') == record_id), None)
+            if target is None:
+                return None
+            event = {
+                'event_type': 'usage',
+                'record_id': record_id,
+                'improved': improved,
+                'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
+            }
+            with self.path.open('a', encoding='utf-8', newline='\n') as stream:
+                stream.write(json.dumps(event, ensure_ascii=False) + '\n')
+                stream.flush()
+            target['used_count'] = int(target.get('used_count', 0)) + 1
+            counter = 'success_count' if improved else 'contradicted_count'
+            target[counter] = int(target.get(counter, 0)) + 1
+            return target
 
     def active_pool(self, max_contradictions: int = 2) -> list[dict]:
         """还能被推荐的经验。被证伪到阈值以上就沉底（但不删）。"""
+        if type(max_contradictions) is not int or max_contradictions < 1:
+            raise ValueError('max_contradictions must be a positive integer')
         pool = []
         for record in self.all():
             if record.get('kind') == 'contradicted':
                 continue
-            if int(record.get('contradicted_count', 0)) >= max_contradictions:
+            net_failures = (int(record.get('contradicted_count', 0))
+                            - int(record.get('success_count', 0)))
+            if net_failures >= max_contradictions:
                 continue
             pool.append(record)
         return pool
