@@ -11,6 +11,45 @@ _ROUND_ID = re.compile(r"^r[0-9]{3}_[a-z0-9_]+$")
 _HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
+def diff_proposals(prev: dict | None, curr: dict) -> list[dict]:
+    """Return a deterministic field-level diff between model proposals."""
+    if not isinstance(curr, dict):
+        raise TypeError("curr must be a proposal dictionary.")
+    if prev is None:
+        return []
+    if not isinstance(prev, dict):
+        raise TypeError("prev must be a proposal dictionary or None.")
+
+    changes = []
+    previous_model, current_model = prev.get("model"), curr.get("model")
+    if previous_model != current_model:
+        changes.append({
+            "op": "replace",
+            "path": "model",
+            "from": previous_model,
+            "to": current_model,
+        })
+
+    previous_parameters = prev.get("parameters") or {}
+    current_parameters = curr.get("parameters") or {}
+    if not isinstance(previous_parameters, dict) or not isinstance(current_parameters, dict):
+        raise TypeError("proposal parameters must be dictionaries.")
+    for key in sorted(set(previous_parameters) | set(current_parameters)):
+        path = f"parameters.{key}"
+        if key not in previous_parameters:
+            changes.append({"op": "add", "path": path, "to": current_parameters[key]})
+        elif key not in current_parameters:
+            changes.append({"op": "remove", "path": path, "from": previous_parameters[key]})
+        elif previous_parameters[key] != current_parameters[key]:
+            changes.append({
+                "op": "change",
+                "path": path,
+                "from": previous_parameters[key],
+                "to": current_parameters[key],
+            })
+    return changes
+
+
 def canonical_json(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, ensure_ascii=False,
                       separators=(",", ":")).encode("utf-8")

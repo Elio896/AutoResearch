@@ -25,7 +25,7 @@ from pathlib import Path
 
 from agents import Analyst, Budget, Experimenter, Manager, Reviewer, Scientist
 from experience import ExperienceStore, advice_lines
-from trajectory import TrajectoryWriter, canonical_json
+from trajectory import TrajectoryWriter, canonical_json, diff_proposals
 
 
 # 参数范围：既是给 Scientist 的约束，也是 Reviewer 的事后检查依据
@@ -339,33 +339,14 @@ class ResearchLoop:
         confidence = proposal.get('confidence_before')
         confidence = float(confidence) if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) else 0.5
 
-        previous_parameters = (baseline or {}).get('parameters') or {}
         candidate_parameters = result.get('parameters') or {}
-        diff = []
-        if baseline_round:
-            diff.append({'op': 'add', 'field': 'model',
-                         'from': None, 'to': result.get('model')})
-            for key, value_before in candidate_parameters.items():
-                diff.append({'op': 'add', 'field': f'parameters.{key}',
-                             'from': None, 'to': value_before})
-        else:
-            previous_model = (baseline or {}).get('model')
-            if previous_model != result.get('model'):
-                diff.append({'op': 'change', 'field': 'model',
-                             'from': previous_model, 'to': result.get('model')})
-            for key in sorted(set(previous_parameters) | set(candidate_parameters)):
-                before, after = previous_parameters.get(key), candidate_parameters.get(key)
-                if key not in previous_parameters:
-                    diff.append({'op': 'add', 'field': f'parameters.{key}', 'to': after})
-                elif key not in candidate_parameters:
-                    diff.append({'op': 'remove', 'field': f'parameters.{key}', 'from': before})
-                elif before != after:
-                    diff.append({'op': 'change', 'field': f'parameters.{key}',
-                                 'from': before, 'to': after})
-        if not diff:
-            diff.append({'op': 'change', 'field': 'proposal',
-                         'from': None, 'to': {'model': result.get('model'),
-                                              'parameters': candidate_parameters}})
+        current_proposal = {'model': result.get('model'), 'parameters': candidate_parameters}
+        previous_proposal = (
+            {'model': (baseline or {}).get('model'),
+             'parameters': (baseline or {}).get('parameters') or {}}
+            if not baseline_round else None
+        )
+        diff = diff_proposals(previous_proposal, current_proposal)
         intervention_kind = 'baseline' if baseline_round else (
             'model' if (baseline or {}).get('model') != result.get('model') else 'hyperparameter')
 
@@ -473,7 +454,11 @@ class ResearchLoop:
                 'confidence_before': confidence,
                 'authored_by': 'Manager baseline' if baseline_round else 'Scientist',
             },
-            'intervention': {'kind': intervention_kind, 'diff': diff},
+            'intervention': {
+                'kind': intervention_kind,
+                'proposal': proposal,
+                'diff': diff,
+            },
             'exec': {
                 'command': command,
                 'code_commit': commit,

@@ -95,16 +95,22 @@
           "type": "string",
           "enum": ["baseline", "feature", "preprocess", "model", "hyperparameter", "threshold", "class_weight", "data", "revert"]
         },
+        "proposal": {
+          "type": "object",
+          "description": "保留旧版记录中的原始 proposal 字段",
+          "additionalProperties": true
+        },
         "diff": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["op", "field"],
+            "required": ["op"],
             "properties": {
-              "op": { "type": "string", "enum": ["add", "remove", "change"] },
-              "field": { "type": "string" },
+              "op": { "type": "string", "enum": ["add", "remove", "change", "replace"] },
+              "path": { "type": "string" },
+              "field": { "type": "string", "description": "兼容既有 field 路径记录" },
               "from": {},
               "to": {}
             }

@@ -4,7 +4,52 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from trajectory import TrajectoryWriter, canonical_json, record_hash
+from trajectory import TrajectoryWriter, canonical_json, diff_proposals, record_hash
+
+
+class ProposalDiffTests(unittest.TestCase):
+    def test_parameter_addition(self):
+        self.assertEqual(
+            diff_proposals(
+                {'model': 'random_forest', 'parameters': {}},
+                {'model': 'random_forest', 'parameters': {'max_depth': 5}},
+            ),
+            [{'op': 'add', 'path': 'parameters.max_depth', 'to': 5}],
+        )
+
+    def test_parameter_removal(self):
+        self.assertEqual(
+            diff_proposals(
+                {'model': 'random_forest', 'parameters': {'n_estimators': 100}},
+                {'model': 'random_forest', 'parameters': {}},
+            ),
+            [{'op': 'remove', 'path': 'parameters.n_estimators', 'from': 100}],
+        )
+
+    def test_parameter_change(self):
+        self.assertEqual(
+            diff_proposals(
+                {'model': 'random_forest', 'parameters': {'max_depth': 4}},
+                {'model': 'random_forest', 'parameters': {'max_depth': 5}},
+            ),
+            [{'op': 'change', 'path': 'parameters.max_depth',
+              'from': 4, 'to': 5}],
+        )
+
+    def test_model_replacement(self):
+        self.assertEqual(
+            diff_proposals(
+                {'model': 'random_forest', 'parameters': {}},
+                {'model': 'hist_gradient_boosting', 'parameters': {}},
+            ),
+            [{'op': 'replace', 'path': 'model',
+              'from': 'random_forest', 'to': 'hist_gradient_boosting'}],
+        )
+
+    def test_baseline_and_unchanged_proposals_have_empty_diff(self):
+        proposal = {'model': 'logistic_regression', 'parameters': {'C': 1.0}}
+        self.assertEqual(diff_proposals(None, proposal), [])
+        self.assertEqual(diff_proposals(proposal, proposal), [])
 
 
 def minimal_record(run_id, round_number, round_id):
@@ -125,6 +170,10 @@ class ResearchLoopTrajectoryTests(unittest.TestCase):
             self.assertEqual(parsed[1]['hypothesis']['text'],
                              'A bounded forest improves validation F1.')
             self.assertIn(parsed[1]['status'], ('kept', 'reverted'))
+            self.assertEqual(parsed[0]['intervention']['diff'], [])
+            self.assertEqual(parsed[1]['intervention']['proposal']['model'], 'random_forest')
+            self.assertEqual(parsed[1]['intervention']['kind'], 'model')
+            self.assertEqual(parsed[1]['intervention']['diff'][0]['path'], 'model')
             self.assertEqual(parsed[1]['budget']['tokens_in'], 11)
             self.assertEqual(parsed[1]['budget']['tokens_out'], 7)
             self.assertTrue(parsed[1]['validation']['gates'])

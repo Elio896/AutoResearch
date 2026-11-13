@@ -193,7 +193,8 @@ def check_evidence(rec, res):
         ("01 身份", bool(rec.get("round_id")) and rec.get("chain", {}).get("prev_hash") is not None or rec.get("round") == 0),
         ("02 输入", bool(rec.get("input", {}).get("sha256")) and rec.get("input", {}).get("rows")),
         ("03 假设", bool(rec.get("hypothesis", {}).get("text")) and bool(rec.get("hypothesis", {}).get("falsifier"))),
-        ("04 diff", len(rec.get("intervention", {}).get("diff") or []) > 0),
+        ("04 diff", (rec.get("intervention", {}).get("kind") == "baseline"
+                     or len(rec.get("intervention", {}).get("diff") or []) > 0)),
         ("05 执行", bool(rec.get("exec", {}).get("command")) and rec.get("exec", {}).get("exit_code") is not None),
         ("06 结果", bool(rec.get("result", {}).get("per_fold")) and rec.get("result", {}).get("ci95") is not None),
         ("07 闸门", len(rec.get("validation", {}).get("gates") or []) > 0),
