@@ -1,5 +1,65 @@
 # EvoResearch
 
+面向轻量机器学习任务的**预算感知自主科研 Agent 系统**。用户给一份 CSV 和一个研究目标，系统用本地小模型完成研究闭环，只在本地确实做不出来时才花云端 token。
+
+## 一句话讲清它怎么省钱
+
+```
+Jev Harness（0 token，纯规则）   →  这次失败值得上云吗？
+        ↓ 放行
+本地千问 3B（几十 token）        →  要调吗？调哪一档？
+        ↓ 放行
+云端 DeepSeek（贵，按 token 计费）→  真正解决本地说不出来的难题
+```
+
+类比看病：**分诊台 → 社区医生 → 专家门诊**。分诊台（Jev Harness）把"小感冒"（参数写错、死循环、微小改进）直接挡回去，这些根本不该占用专家。
+
+## 五个角色
+
+| 角色 | 实现 | Token |
+|---|---|---|
+| Analyst | pandas 统计画像（缺失、不平衡、小样本） | **0** |
+| Manager | 预算算术 + 停/升级判据 | **0** |
+| Scientist | 本地 Qwen 7B 提方案（必带可证伪假设） | 中 |
+| Experimenter | scikit-learn 真训练 | **0** |
+| Reviewer | 规则判好坏 + 闸门 + 回滚标记 | **0** |
+| RedTeam | 本地 Qwen 3B 找茬（必须可被代码检验） | 低 |
+
+## EvoUndo：能被审计的回滚
+
+每次实验是一个版本。Reviewer 判退步 → `current` 自动指回历史最优。**不重训、不删版本**——被抛弃的那代标 `rolled_back` 留着，它是"这条假设被否证"的证据。
+
+```powershell
+.\.venv\Scripts\python.exe tools\run_five_roles.py bench\tasks\t2_imbalanced\data.csv ^
+    --target target --metric f1_minority --pos-label 1 ^
+    --model qwen2.5:7b-instruct-q4_K_M --small-model qwen2.5:3b-instruct-q4_K_M ^
+    --enable-cloud --enable-qwen-router --enable-jev-harness --max-cloud-calls 1
+```
+
+产物：
+- `artifacts/evoundo/<run>/versions.json` + `versions.html`（零依赖版本树）
+- `artifacts/trajectory/<run>/` 九项证据 + 哈希链，用 `docs/交付包/04-研究轨迹规范/validate_trace.py` 校验
+
+## 研究轨迹的九项证据
+
+按 `docs/交付包/04-研究轨迹规范/` 实现，**验收只看 E2 以上**：
+
+身份血缘 / 输入快照 / **假设与可证伪预测** / 干预 diff / **执行凭证** / 结果与不确定性 / **闸门与回滚** / 预算台账 / 结论与下一步
+
+实测：3 轮轨迹 `FAIL 0 / WARN 0`；同 seed 重跑 diff = 0（E2 达标，脚本 `tools/verify_determinism.py`）。
+
+## 已验证的事实（不是设计稿）
+
+| 项 | 证据 |
+|---|---|
+| 本地 7B | 100% GPU，4.8GB，64 tok/s，JSON 合规 40/40 |
+| 本地 3B | 121 tok/s，红队用它照样提得出合格质疑 |
+| JEV 官方 | `model: jev-1.14.0`，probability 0.67 |
+| 云端 DeepSeek | 返回真 JSON；只在三层放行后被调用 |
+| 测试 | 143 passed |
+
+## 第一阶段（历史）
+
 First milestone: a local CSV classification executor. No API keys or LLMs needed.
 
 ## Setup (PowerShell, only after dependency-install approval)
