@@ -15,6 +15,7 @@ import hashlib
 import importlib.metadata
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -429,8 +430,10 @@ class ResearchLoop:
         }
         env_hash = 'sha256:' + hashlib.sha256(canonical_json(env_material)).hexdigest()
         try:
+            # git 不一定在 PATH 里（这台机器就是装在 Program Files），先找再用
+            git_exe = shutil.which('git') or r'C:\Program Files\Git\cmd\git.exe'
             commit = subprocess.run(
-                ['git', 'rev-parse', 'HEAD'], cwd=Path(__file__).parent,
+                [git_exe, 'rev-parse', 'HEAD'], cwd=Path(__file__).parent,
                 check=True, capture_output=True, text=True, timeout=2,
             ).stdout.strip()
         except (OSError, subprocess.SubprocessError):

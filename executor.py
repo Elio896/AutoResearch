@@ -20,6 +20,7 @@ class ResearchSession:
         if metric not in ('f1_macro', 'f1_minority'):
             raise ValueError('Unsupported selection metric.')
         self.metric, self.pos_label = metric, str(pos_label)
+        self.target = str(target)          # 轨迹要记目标列名，供审计
         raw = Path(csv_path).read_bytes()
         self.dataset_sha256 = hashlib.sha256(raw).hexdigest()
         from io import BytesIO
