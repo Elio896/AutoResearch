@@ -136,9 +136,10 @@ class ResearchLoop:
         if self.experience is not None:
             matched = self.experience.match(profile)
             advice = advice_lines(matched)
+            self._advice_ids = [r['id'] for r in matched]
             if matched:
                 self._record('experience_matched', count=len(matched),
-                             ids=[r['id'] for r in matched])
+                             ids=self._advice_ids)
 
         # 3) Experimenter 跑 baseline
         best = self._run_experiment(plan)
@@ -773,7 +774,30 @@ class ResearchLoop:
             summary['evoundo_best'] = self.chain.best().version_id if self.chain.best() else None
         self._record('finish', summary=summary)
         self._learn(results, best, results[0] if results else None)
+        self._settle_advice(results, best)
         return {'summary': summary, 'events': self.events, 'experiments': results}
+
+    def _settle_advice(self, results: list, best: dict | None) -> None:
+        """给这次用过的经验记账：它到底管不管用。
+
+        这是"自进化"闭环的最后一步——经验不是写进去就完了，
+        每次被用之后都要知道自己有没有帮上忙，不然经验库只会膨胀不会进化。
+        """
+        if self.experience is None or not getattr(self, '_advice_ids', None):
+            return
+        if not results or best is None:
+            return
+        baseline = results[0]
+        base = float(baseline.get('validation_score', baseline.get('validation_f1', 0.0)))
+        top = float(best.get('validation_score', best.get('validation_f1', 0.0)))
+        improved = top > base + 0.01          # 至少比 baseline 高 1 个点才算"经验帮上忙"
+        for record_id in self._advice_ids:
+            updated = self.experience.record_usage(record_id, improved)
+            if updated is not None:
+                self._record('experience_settled', id=record_id, improved=improved,
+                             used_count=updated.get('used_count'),
+                             success_count=updated.get('success_count'),
+                             contradicted_count=updated.get('contradicted_count'))
 
     def _learn(self, results: list, best: dict | None, baseline: dict | None) -> None:
         """把这一轮的发现沉淀成经验。

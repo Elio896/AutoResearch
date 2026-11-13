@@ -43,6 +43,10 @@ class ExperienceStore:
             'advice': str(advice).strip()[:400],
             'evidence': evidence,             # {'task':..., 'score':..., 'baseline':...}
             'source_task': source_task,
+            # 使用统计：经验被用过几次、成功几次、被证伪几次
+            'used_count': 0,
+            'success_count': 0,
+            'contradicted_count': 0,
         }
         with self.path.open('a', encoding='utf-8') as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + '\n')
@@ -105,6 +109,75 @@ class ExperienceStore:
         if isinstance(value, (int, float)) and isinstance(actual, (int, float)):
             return abs(float(actual) - float(value)) < 1e-9
         return actual == value
+
+    def record_usage(self, record_id: str, improved: bool) -> dict | None:
+        """回写一次使用结果。
+
+        这是"自进化"能不能成立的关键：
+        经验被用过之后，必须知道自己管不管用。否则经验库只会在膨胀，不会在进化。
+
+        规则：
+          - 用过一次就 used_count +1
+          - 真的让分数变好才 success_count +1
+          - 没用（甚至变差）就 contradicted_count +1
+          - **不删记录**，只在 active_pool 里降权
+        """
+        records = self.all()
+        target = None
+        for r in records:
+            if r.get('id') == record_id:
+                target = r
+                break
+        if target is None:
+            return None
+
+        target['used_count'] = int(target.get('used_count', 0)) + 1
+        if improved:
+            target['success_count'] = int(target.get('success_count', 0)) + 1
+        else:
+            target['contradicted_count'] = int(target.get('contradicted_count', 0)) + 1
+
+        # 重写整个文件（这个库很小，几条到几十条；用重写保证计数不会写乱）
+        self._rewrite(records)
+        return target
+
+    def _rewrite(self, records: list[dict]) -> None:
+        with self.path.open('w', encoding='utf-8') as fh:
+            for record in records:
+                fh.write(json.dumps(record, ensure_ascii=False) + '\n')
+
+    def active_pool(self, max_contradictions: int = 2) -> list[dict]:
+        """还能被推荐的经验。被证伪到阈值以上就沉底（但不删）。"""
+        pool = []
+        for record in self.all():
+            if record.get('kind') == 'contradicted':
+                continue
+            if int(record.get('contradicted_count', 0)) >= max_contradictions:
+                continue
+            pool.append(record)
+        return pool
+
+    def lineage(self) -> dict:
+        """进化账：这个库到底学到了多少、有多少真管用。"""
+        records = self.all()
+        observed = [r for r in records if r.get('kind') != 'contradicted']
+        used = [r for r in observed if int(r.get('used_count', 0)) > 0]
+        successes = sum(int(r.get('success_count', 0)) for r in observed)
+        contradictions = sum(int(r.get('contradicted_count', 0)) for r in observed)
+        total_uses = successes + contradictions
+        return {
+            'total_records': len(records),
+            'observed': len(observed),
+            'contradicted_records': len(records) - len(observed),
+            'ever_used': len(used),
+            'total_uses': total_uses,
+            'successes': successes,
+            'contradictions': contradictions,
+            'success_rate': round(successes / total_uses, 4) if total_uses else None,
+            'active': len(self.active_pool()),
+            'retired': len(observed) - len(self.active_pool()),
+            'path': str(self.path),
+        }
 
     def stats(self) -> dict:
         records = self.all()
