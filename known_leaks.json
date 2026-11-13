@@ -1,0 +1,8 @@
+[
+  {
+    "dataset_sha256": "ae7769ae3c26ab22f128918bc887db8184b32e0f052e2fa9b830f6172f86698b",
+    "target": "target",
+    "column": "record_id",
+    "source": "bench/make_tasks.py: task_t1_missing sorts by target, then generates record_id before shuffling."
+  }
+]

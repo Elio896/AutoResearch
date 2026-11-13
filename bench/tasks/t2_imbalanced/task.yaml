@@ -1,0 +1,5 @@
+id: t2_imbalanced
+metric: f1_minority
+target: target
+pos_label: 1
+noise: 1.0

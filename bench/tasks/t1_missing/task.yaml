@@ -1,0 +1,5 @@
+id: t1_missing
+metric: f1_macro
+target: target
+pos_label: 1
+noise: 1.0

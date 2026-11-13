@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EvoResearch · 研究工作台</title><link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/"><span class="brand-mark">↗</span><span>EvoResearch<small>小步实验，循证前行</small></span></a>
+  <div class="workspace-label">WORKSPACE / 01</div>
+  <a class="nav active" href="/">◈ <span>研究工作台</span><span class="nav-count">01</span></a>
+  <div class="sidebar-heading">最近任务 <button id="refresh-tasks" aria-label="刷新任务">↻</button></div>
+  <div id="task-list" class="task-list"><p class="muted">正在读取任务…</p></div>
+  <div class="sidebar-footer"><span class="status-dot"></span> 本地研究环境<small>实验记录保存在这台电脑上</small></div>
+</aside>
+<main>
+  <header class="topbar"><div><span class="breadcrumb">工作空间</span><span class="slash">/</span>研究工作台</div><span id="connection" class="connection">连接中…</span></header>
+  <section class="intro"><div><div class="eyebrow">YOUR NEXT DISCOVERY STARTS HERE</div><h1>让实验，回答问题。</h1><p>给出数据与预算，看本地模型提出方案，用真实结果决定下一步。</p></div><div class="intro-note"><span>LOCAL FIRST</span><strong>小模型提案<br>真实实验把关</strong><small>当前网页仅使用本地千问</small></div></section>
+  <section class="metrics" aria-label="研究概况">
+    <article><span class="metric-label">最佳验证 F1 <span>↗</span></span><strong id="best-score">—</strong><small id="best-model">等待第一份实验结果</small></article>
+    <article><span class="metric-label">实验预算 <span>◷</span></span><strong id="experiment-count">0 <em>/ —</em></strong><small>每次训练都会计入预算</small></article>
+    <article><span class="metric-label">本地模型调用 <span>⌁</span></span><strong id="model-calls">0</strong><small id="token-count">尚未发起调用</small></article>
+    <article class="test-metric"><span class="metric-label">测试集状态 <span>◇</span></span><strong id="test-state">已隔离</strong><small id="test-detail">研究结束后，由你确认评估</small></article>
+  </section>
+  <section class="work-grid">
+    <div class="input-column"><section class="card setup"><div class="card-heading"><h2><span class="step-number">01</span>新建研究</h2><span class="tiny-tag">表格分类</span></div>
+      <label id="drop-zone" class="drop-zone" for="csv-file"><span class="upload-icon">↑</span><strong id="file-name">选择或拖入 CSV</strong><small id="file-info">UTF-8 编码 · 最大 2 MB</small><input id="csv-file" type="file" accept=".csv,text/csv"></label>
+      <button id="use-demo" class="demo-button" type="button">先用鸢尾花数据试一试 <span>↗</span></button>
+      <form id="research-form"><label class="field-label" for="target-column">要预测哪一列？</label><select id="target-column" required disabled><option value="">先选择数据文件</option></select>
+      <div class="budget-heading">给这次研究留多少空间？</div>
+      <div class="two-fields"><label>实验次数<input id="max-experiments" type="number" value="3" min="1" max="20" required></label><label>模型调用次数<input id="max-calls" type="number" value="4" min="0" max="10" required></label></div>
+      <label class="field-label" for="max-seconds">运行时间预算（秒）</label><input id="max-seconds" type="number" min="5" max="600" value="120" required>
+      <p class="field-hint">到时停止发起新工作，正在进行的训练不会被强制中断。</p>
+      <button id="start-research" class="primary" disabled type="submit">新建并启动研究 <span>↗</span></button></form>
+      <div class="local-note"><span class="status-dot"></span><div>Qwen2.5 · 0.5B<small>本地提出方案 · 不调用收费 API</small></div></div>
+    </section><div class="quiet-note">好的研究，也包括没有提升的结果。<br>每次尝试都会留下记录。</div></div>
+    <div class="results-column"><section class="card results"><div class="card-heading"><h2><span class="step-number">02</span>实验与证据</h2><span id="run-status" class="badge">尚未开始</span></div>
+      <div class="research-flow"><span><i>1</i> 提出方案</span><b>→</b><span><i>2</i> 真实训练</span><b>→</b><span><i>3</i> 验证与选择</span></div>
+      <section id="risk-panel" class="risk-panel" hidden><h3 id="risk-title">数据风险审核</h3><p id="risk-summary"></p><div id="risk-findings"></div><button id="save-review" class="secondary" type="button">保存明确的处理决定</button></section>
+      <div id="existing-task-controls" class="existing-task-controls" hidden><p id="existing-task-hint"></p><button id="start-existing" class="secondary" type="button">启动此任务研究 ↗</button></div>
+      <div id="empty-results" class="empty-state"><div class="empty-graphic"><span></span><span></span><span></span><span></span><span></span></div><h3>先有证据，再下结论。</h3><p>上传数据或载入示例，第一轮实验会从基线开始。<br>之后的模型建议必须通过校验，才会进入训练。</p></div>
+      <div id="results-content" hidden><p id="task-caption" class="task-caption"></p><div class="table-scroll"><table><thead><tr><th>实验 / 模型</th><th>验证 F1</th><th>耗时</th><th>结果</th></tr></thead><tbody id="experiment-rows"></tbody></table></div><div id="research-outcome" class="outcome"></div></div>
+      <div class="evidence-footer"><span>✓ 预处理只拟合训练集</span><span>✓ 测试集不参与方案选择</span></div>
+    </section>
+    <section class="card final-card"><div><span class="eyebrow">THE FINAL CHECK</span><h2>完成研究，再打开测试集。</h2><p id="final-explanation">最终评估会选择验证集表现最好的方案，并封存这个任务。</p></div><button id="finalize" class="secondary" disabled>确认最终评估 ↗</button></section>
+    </div>
+    <section class="card timeline-card"><div class="card-heading"><h2><span class="step-number">03</span>研究轨迹</h2><span id="event-count" class="tiny-tag">0 条</span></div><p class="timeline-intro">每一步，保留它的依据。</p><ol id="timeline" class="timeline"><li class="timeline-empty">研究开始后，在这里查看方案、校验结果与停止原因。</li></ol></section>
+  </section><footer class="page-footer"><span>EvoResearch / Research in small, verifiable steps.</span><a href="/docs" target="_blank" rel="noopener">接口文档 ↗</a></footer>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<dialog id="final-dialog"><div class="dialog-label">最后一次检查</div><h2>准备封存这次研究吗？</h2><p>将评估验证集上最好的方案。完成后，这个任务不能继续实验，也不能重复评估测试集。</p><div class="dialog-actions"><button id="cancel-final" class="secondary">继续研究</button><button id="confirm-final" class="primary">评估并封存</button></div></dialog>
+</body></html>

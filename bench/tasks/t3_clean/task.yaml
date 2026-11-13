@@ -1,0 +1,5 @@
+id: t3_clean
+metric: f1_macro
+target: target
+pos_label: 1
+noise: 0.0
