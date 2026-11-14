@@ -164,12 +164,28 @@
     <div class="stats">
       <div><div class="big-number" id="r-score">—</div><div class="big-label">最佳验证分数</div></div>
       <div><div class="big-number" id="r-model" style="font-size:20px">—</div><div class="big-label">最佳方案</div></div>
-      <div><div class="big-number" id="r-ver" style="font-size:24px">0</div><div class="big-label">版本数</div></div>
+      <div><div class="big-number" id="r-ver" style="font-size:24px">0</div><div class="big-label">已迭代代数</div></div>
       <div><div class="big-number" id="r-rb" style="font-size:24px">0</div><div class="big-label">回滚次数</div></div>
     </div>
-    <div class="branches">
-      <div class="branch jev" id="b-jev"><h3>JEV · 决策支</h3><div class="empty">等结果…</div></div>
-      <div class="branch cloud" id="b-cloud"><h3>DeepSeek · 生成支</h3><div class="empty">等结果…</div></div>
+
+    <!-- 手动 / 自动 -->
+    <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
+      <div class="hint" style="margin-bottom:10px;font-weight:600;color:var(--ink)">继续迭代</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button id="mode-manual" class="primary" type="button">手动</button>
+        <button id="mode-auto" type="button">自动</button>
+
+        <span id="manual-box">
+          <button id="step-btn" class="primary" type="button">迭代一次 →</button>
+        </span>
+        <span id="auto-box" class="hidden">
+          跑 <input id="auto-rounds" type="number" min="1" max="50" value="5"
+                    style="width:70px;padding:8px;border:1px solid var(--line);border-radius:8px;font:inherit">
+          代
+          <button id="auto-btn" class="primary" type="button">开始自动迭代</button>
+        </span>
+        <span class="hint" id="mode-hint">点一下跑一代，折线跟着长一个点</span>
+      </div>
     </div>
   </section>
 
@@ -391,7 +407,6 @@ function renderCurrent(item, data) {
       <div class="kv">它在问：<b>${b.cloud.question}</b></div>
       <div class="kv">${b.cloud.reason}</div>`;
   }
-
   const experiments = data.experiments || [];
   const best = s.best_score;
   $('versions').innerHTML = experiments.map((exp, i) => {
@@ -689,6 +704,66 @@ $('approve').addEventListener('click', () => {
 $('toggle-research').addEventListener('click', () => {
   const hidden = $('research-detail').classList.toggle('hidden');
   $('toggle-research').textContent = hidden ? '展开明细' : '收起明细';
+});
+
+// ---- 手动 / 自动 迭代 ----
+const setMode = (next) => {
+  $('mode-manual').className = next === 'manual' ? 'primary' : '';
+  $('mode-auto').className = next === 'auto' ? 'primary' : '';
+  $('manual-box').classList.toggle('hidden', next !== 'manual');
+  $('auto-box').classList.toggle('hidden', next !== 'auto');
+  $('mode-hint').textContent = next === 'manual'
+    ? '点一下跑一代，折线跟着长一个点'
+    : '填几代就连着跑几代，跑完一起画';
+};
+$('mode-manual').addEventListener('click', () => setMode('manual'));
+$('mode-auto').addEventListener('click', () => setMode('auto'));
+
+const applyProgress = (data) => {
+  const experiments = data.experiments || [];
+  const summary = data.summary || {};
+  $('r-score').textContent = summary.best_score != null
+    ? Number(summary.best_score).toFixed(4) : '—';
+  $('r-model').textContent = summary.best_model || '—';
+  $('r-ver').textContent = experiments.length;
+  $('r-rb').textContent = summary.evoundo_rollbacks ?? 0;
+  renderResearch(experiments, summary, {});
+  renderMultiCharts(experiments);
+};
+
+$('step-btn').addEventListener('click', async () => {
+  if (!sessionId) { alert('先点「开始分析」并同意一次'); return; }
+  const btn = $('step-btn');
+  btn.disabled = true;
+  btn.textContent = '跑一代…';
+  try {
+    const data = await post('/demo/step', {session_id: sessionId});
+    applyProgress(data);
+    btn.textContent = data.done ? '已停（点「再跑一次」重开）' : '迭代一次 →';
+  } catch (error) {
+    alert(error.message);
+    btn.textContent = '迭代一次 →';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('auto-btn').addEventListener('click', async () => {
+  if (!sessionId) { alert('先点「开始分析」并同意一次'); return; }
+  const btn = $('auto-btn');
+  const rounds = Number($('auto-rounds').value) || 5;
+  btn.disabled = true;
+  btn.textContent = `跑 ${rounds} 代…`;
+  try {
+    const data = await post('/demo/auto', {session_id: sessionId, rounds});
+    applyProgress(data);
+    btn.textContent = `已跑 ${data.rounds} 代`;
+  } catch (error) {
+    alert(error.message);
+    btn.textContent = '开始自动迭代';
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // key 对话框

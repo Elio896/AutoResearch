@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import time
 import uuid
 
@@ -57,6 +58,7 @@ def start(csv_text: str, target: str, metric: str, pos_label: str,
 
     session_id = uuid.uuid4().hex[:12]
     _SESSIONS[session_id] = {
+        'session_id': session_id,
         'created': time.time(),
         'csv_text': csv_text,
         'target': target,
@@ -152,6 +154,123 @@ def approve(session_id: str, overrides: dict | None = None) -> dict:
     session['overrides'] = overrides or {}
     return {'ok': True, 'approved': True, 'config': {**_suggest(session['profile'], session['context']),
                                                      **(overrides or {})}}
+
+
+def _runner_for(session: dict) -> 'ResearchLoop':
+    """给一个 session 造（或复用）一个可以逐代推进的研究循环。"""
+    from pathlib import Path
+    from agents import Budget
+    from executor import ResearchSession
+    from research_loop import ResearchLoop
+
+    loop = session.get('loop')
+    if loop is not None:
+        return loop
+    # session 里存的是 csv_text（不是 csv），参数在 metric/pos_label，人工改动在 overrides
+    overrides = session.get('overrides') or {}
+    metric = overrides.get('metric') or session['metric']
+    pos_label = str(overrides.get('pos_label') or session['pos_label'])
+    max_experiments = int(overrides.get('max_experiments') or 3)
+    # ResearchSession 要文件路径，先把内存里的 csv 落到临时文件
+    tmp_dir = Path(tempfile.gettempdir()) / 'evoresearch-demo'
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = tmp_dir / f'{session["session_id"] if "session_id" in session else uuid.uuid4().hex}.csv'
+    if not csv_path.is_file():
+        csv_path.write_text(session['csv_text'], encoding='utf-8')
+    research = ResearchSession(
+        csv_path, session['target'],
+        metric=metric, pos_label=pos_label,
+    )
+    budget = Budget(max_experiments=max_experiments,
+                    max_seconds=float(overrides.get('max_seconds') or 300.0),
+                    max_local_calls=max_experiments + 2)
+    proposer = session.get('proposer')
+    if proposer is None:
+        # 离线演示：用固定目录轮着提，保证真跑但不依赖模型
+        baseline = overrides.get('baseline_model') or 'logistic_regression'
+        catalogue = [
+            {'model': baseline, 'parameters': {}},
+            {'model': 'hist_gradient_boosting', 'parameters': {'max_depth': 4}},
+            {'model': 'random_forest', 'parameters': {'n_estimators': 50}},
+            {'model': 'hist_gradient_boosting', 'parameters': {'max_depth': 8}},
+        ]
+        state = {'i': 0}
+
+        def proposer(messages, timeout=None):
+            item = dict(catalogue[state['i'] % len(catalogue)])
+            state['i'] += 1
+            item.update({'hypothesis': f'第 {state["i"]} 个方案试试看',
+                         'expected_direction': 'up',
+                         'falsifier': '验证分数没提升'})
+            return {'message': {'content': json.dumps(item)},
+                    'prompt_eval_count': 0, 'eval_count': 0}
+    session['proposer'] = proposer
+    loop = ResearchLoop(research, proposer=proposer, budget=budget, patience=2)
+    session['loop'] = loop
+    return loop
+
+
+def step(session_id: str) -> dict:
+    """手动模式：推进一代，返回当前全部状态。
+
+    每一代都是真的跑一次实验，不是摆样子。
+    """
+    session = _SESSIONS.get(session_id)
+    if session is None:
+        raise KeyError('session 不存在或已过期')
+    if not session['approved']:
+        raise PermissionError('还没有人确认，不能开跑')
+
+    loop = _runner_for(session)
+    loop.max_rounds_override = 1
+    result = loop.run()
+    loop.max_rounds_override = None
+    session['runs'] = result
+    experiments = result.get('experiments') or []
+    return {
+        'rounds': len(experiments),
+        'experiments': experiments,
+        'summary': result['summary'],
+        'best_series': [e.get('validation_score', e.get('validation_f1'))
+                        for e in experiments],
+        'done': bool(result['summary'].get('stop_reason')) and
+                result['summary'].get('stop_reason') not in ('rounds_cap', 'experiment_budget'),
+        'stop_reason': result['summary'].get('stop_reason'),
+    }
+
+
+def auto(session_id: str, rounds: int = 10) -> dict:
+    """自动模式：连续跑 N 代。
+
+    上限由 session 的预算决定，不许超过——不然就成了无限烧。
+    """
+    session = _SESSIONS.get(session_id)
+    if session is None:
+        raise KeyError('session 不存在或已过期')
+    if not session['approved']:
+        raise PermissionError('还没有人确认，不能开跑')
+
+    overrides = session.get('overrides') or {}
+    cap = max(1, int(overrides.get('max_experiments') or 8))
+    wanted = max(1, min(int(rounds), cap))
+
+    loop = _runner_for(session)
+    loop.max_rounds_override = wanted
+    result = loop.run()
+    loop.max_rounds_override = None
+    session['runs'] = result
+    experiments = result.get('experiments') or []
+    return {
+        'rounds': len(experiments),
+        'requested': int(rounds),
+        'capped_to': cap,
+        'experiments': experiments,
+        'summary': result['summary'],
+        'best_series': [e.get('validation_score', e.get('validation_f1'))
+                        for e in experiments],
+        'done': bool(result['summary'].get('stop_reason')),
+        'stop_reason': result['summary'].get('stop_reason'),
+    }
 
 
 def execute(session_id: str, offline: bool = True,

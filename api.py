@@ -57,6 +57,19 @@ class DemoApproveInput(BaseModel):
     overrides: dict = Field(default_factory=dict)
 
 
+class DemoStepInput(BaseModel):
+    """手动模式：推进一代。"""
+    model_config = ConfigDict(extra='forbid')
+    session_id: str = Field(min_length=1, max_length=64)
+
+
+class DemoAutoInput(BaseModel):
+    """自动模式：连续推进 N 代。"""
+    model_config = ConfigDict(extra='forbid')
+    session_id: str = Field(min_length=1, max_length=64)
+    rounds: int = Field(default=5, ge=1, le=50)
+
+
 class DemoExecuteInput(BaseModel):
     """第三步：按人确认过的配置真跑，返回两条支线的思考。"""
     model_config = ConfigDict(extra='forbid')
@@ -171,6 +184,32 @@ def create_app(data_directory=None):
         try:
             return demo_flow.execute(body.session_id, offline=body.offline,
                                      use_jev=body.use_jev, use_cloud=body.use_cloud)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except Exception as exc:                    # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)[:300]) from None
+
+    @app.post('/demo/step', status_code=200)
+    def demo_step(body: DemoStepInput):
+        """手动模式：点一下推进一代，返回到目前为止的全部数据。"""
+        import demo_flow
+        try:
+            return demo_flow.step(body.session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except Exception as exc:                    # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)[:300]) from None
+
+    @app.post('/demo/auto', status_code=200)
+    def demo_auto(body: DemoAutoInput):
+        """自动模式：连续跑 N 代（受审批时设的预算上限约束）。"""
+        import demo_flow
+        try:
+            return demo_flow.auto(body.session_id, rounds=body.rounds)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from None
         except PermissionError as exc:

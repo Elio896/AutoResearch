@@ -210,7 +210,14 @@ class ResearchLoop:
                              ids=self._advice_ids)
 
         # 3) Experimenter 跑 baseline
-        best = self._run_experiment(plan)
+        #    续跑（手动模式点第二下）时不再重复跑 baseline，直接接着上次的链
+        if self._experiments:
+            best = max(self._experiments, key=lambda e: e.get('validation_score',
+                                                              e.get('validation_f1') or 0))
+            self._record('resume_from_best', model=best.get('model'),
+                         score=best.get('validation_score', best.get('validation_f1')))
+        else:
+            best = self._run_experiment(plan)
         # baseline 也是一个版本（v1），漏了它版本链就少一代
         if best is not None:
             self.chain.add(
@@ -225,7 +232,14 @@ class ResearchLoop:
         stop_reason = ''
 
         # 4) 循环：Manager 判停 → Scientist 提 → Experimenter 跑 → Reviewer 判
+        rounds_done = 0
         while True:
+            # 演示用：允许外部限制"这次最多推进几代"（手动模式点一下跑一代）
+            cap = getattr(self, 'max_rounds_override', None)
+            if cap is not None and rounds_done >= cap:
+                stop_reason = 'rounds_cap'
+                break
+            rounds_done += 1
             self.used['seconds'] = time.monotonic() - started
             stop, reason = self.manager.should_stop({**self.used, 'no_improvement': no_improvement})
             if stop:
