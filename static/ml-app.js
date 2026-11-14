@@ -23,7 +23,27 @@ $('check-connection').onclick=()=>verifyConnection().catch(()=>{});
 const flowRoles=['source','classifier','low','high','reviewer'];
 function eventRole(e,prior){if(e.event.startsWith('route_recheck'))return 'classifier';if(['clarification_required','routing_blocked'].includes(e.event))return 'high';if(e.event.startsWith('source_')||['planning_started','plan'].includes(e.event))return 'source';if(['classification_started','classification_deferred','route'].includes(e.event))return 'classifier';if(['review_started','final_review'].includes(e.event))return 'reviewer';if(e.event==='escalation')return 'high';return e.tier||prior||'source';}
 function eventSummary(e){const labels={iteration_started:'开始新一轮研究',research_replanned:'依据上一轮证据修正实验计划',iteration_completed:'本轮研究完成',iteration_stopped:'达到停止条件，保留最佳方案',duplicate_proposal_skipped:'跳过已验证的重复方案',context_loaded:'载入上一轮研究上下文',classification_uncertain:'分类不确定，准备升级复核',method_scope_review:'正在检查研究问题与方法的适配范围',analysis_scope_adjusted:'因果证据不足，继续可支持的关联分析',association_started:'正在执行本地关联统计',association_completed:'关联分析已完成',route_recheck_started:'高级模型正在复核派发方案',route_recheck_resolved:'高级复核完成，重新派发',route_recheck_unresolved:'高级复核仍需补充信息',route_recheck_failed:'高级复核失败，流程停止',clarification_required:'请补充必要信息',routing_blocked:'派发或执行未完成',experience_loaded:'载入历史最佳方案并重新验证',experience_retained:'沿用已验证的最佳方案',experience_rejected:'历史方案复验失败，恢复基线',lesson_recorded:'保存实测经验',lessons_consulted:'参考历史经验',lesson_prevented_repeat:'避免重复无效实验',data_ready:'数据已整理，交给分类站派发',source_search_retry:'正在调整关键词重新搜索',source_query:'搜索关键词',source_candidates:'找到候选数据',source_selected:'选择数据',source_downloading:'下载数据',source_collection_started:'来源站正在理解需求并搜集数据',source_collected:'数据已获取，准备整理',planning_started:'来源站正在整理研究目标',plan:'研究任务已整理',classification_started:'分类站正在判断任务类型与适配工作站',worker_started:'工作站正在分析并提出实验方案',training_started:'程序正在执行真实训练',review_started:'审核站正在检查实验与证据',route:'分类完成，派发至工作站',escalation:'任务升级至高级工作站',final_review:'最终审核完成',experiment:'真实训练完成',worker_failed:'工作站执行失败',classification_deferred:'分类置信度不足，暂缓派发'};return (labels[e.event]||names[e.event]||e.event)+(e.round?'（第 '+e.round+'/'+(e.total_rounds||3)+' 轮）':'')+(e.query?'：'+e.query:'')+(e.count!==undefined?'（'+e.count+' 个）':'')+(e.name?'：'+e.name:'')+(e.reason?' · '+e.reason:'')+(e.score!==undefined?' · 验证 F1 '+Number(e.score).toFixed(4):'');}
-function renderWorkflow(state,events){if(lastWorkflowRun!==run){for(const role of flowRoles)$('action-'+role).textContent='等待本轮任务';lastWorkflowRun=run;}let current='source';const visited=new Set(),edges=new Set();let lastWorker=null;for(const e of events){current=eventRole(e,current);visited.add(current);if(current==='classifier')edges.add('source-classifier');if(e.event==='route'){lastWorker=e.tier;edges.add('classifier-'+e.tier);}if(e.event==='escalation'){lastWorker='high';edges.add('low-high');}if(e.event==='route_recheck_started')edges.add('classifier-high');if(current==='reviewer'&&lastWorker)edges.add(lastWorker+'-reviewer');if(e.event==='association_started')$('model-'+current).textContent='本地统计工具（无需调用模型）';const el=$('action-'+current);if(el){el.textContent=eventSummary(e);el.title=el.textContent;}}
+const FLOW_TEXT={'source-classifier':'来源 → 分类站：数据画像（行数、类别、缺失率）',
+ 'classifier-low':'分类站 → 常规工作站（本地）：任务单 + 能力判断',
+ 'classifier-high':'分类站 → 高级工作站：任务单 + 能力判断',
+ 'low-high':'常规工作站 → 高级工作站：这个做不了，升级',
+ 'low-reviewer':'常规工作站 → 审核站：实验记录（模型、参数、验证分）',
+ 'high-reviewer':'高级工作站 → 审核站：诊断提案与实验结果'};
+let lastFlowKey='';
+function animateFlow(edges){
+  const key=edges.slice().sort().join(',');
+  if(key===lastFlowKey) return;
+  lastFlowKey=key;
+  const paths=[...document.querySelectorAll('.flow-lines path')];
+  paths.forEach(p=>p.classList.remove('on'));
+  edges.filter(e=>document.getElementById('edge-'+e)).forEach((e,i)=>{
+    setTimeout(()=>{const p=document.getElementById('edge-'+e);if(!p)return;
+      p.classList.add('on');
+      const cap=document.getElementById('flow-caption');
+      if(cap) cap.textContent=FLOW_TEXT[e]||e;},i*700);
+  });
+}
+function renderWorkflow(state,events){if(lastWorkflowRun!==run){for(const role of flowRoles)$('action-'+role).textContent='等待本轮任务';lastWorkflowRun=run;}let current='source';const visited=new Set(),edges=new Set();let lastWorker=null;for(const e of events){current=eventRole(e,current);visited.add(current);if(current==='classifier')edges.add('source-classifier');if(e.event==='route'){lastWorker=e.tier;edges.add('classifier-'+e.tier);}if(e.event==='escalation'){lastWorker='high';edges.add('low-high');}if(e.event==='route_recheck_started')edges.add('classifier-high');if(current==='reviewer'&&lastWorker)edges.add(lastWorker+'-reviewer');if(edges.size)setTimeout(()=>animateFlow([...edges]),0);if(e.event==='association_started')$('model-'+current).textContent='本地统计工具（无需调用模型）';const el=$('action-'+current);if(el){el.textContent=eventSummary(e);el.title=el.textContent;}}
  const running=['queued','running'].includes(state.status);for(const r of flowRoles){const n=$('node-'+r);n.classList.toggle('visited',visited.has(r));n.classList.toggle('needs-input',state.status==='needs_input'&&r===current);n.classList.toggle('active',running&&r===current);n.classList.toggle('error',['failed','blocked'].includes(state.status)&&r===current);n.querySelector('.node-state').textContent=running&&r===current?'正在执行':['failed','blocked'].includes(state.status)&&r===current?'执行中断':state.status==='needs_input'&&r===current?'需补充信息':visited.has(r)?'已参与':'等待任务';}
  document.querySelectorAll('.flow-lines path').forEach(p=>{const key=p.id.slice(5);p.classList.toggle('visited',edges.has(key));p.classList.toggle('flowing',running&&edges.has(key)&&(key.endsWith(current)||key==='classifier-'+lastWorker&&current===lastWorker));});
  $('flow-state').textContent=running?'实时执行中':['failed','blocked','needs_input'].includes(state.status)?'流程已暂停':state.status==='needs_revision'?'研究结果仍需修正':state.status==='partial_completed'?'关联分析完成，因果结论不支持':state.status==='completed'?'本轮执行结束':'等待任务';$('flow-summary').textContent=['failed','blocked','needs_input'].includes(state.status)?(state.reason||state.report?.clarification?.reason||'流程中断，请查看错误详情'):events.length?eventSummary(events[events.length-1]):'等待执行事件…';}
@@ -97,103 +117,70 @@ function renderAccountBilling(billing){
  $('account-window').textContent=observations.length?'实际账户窗口变化：'+observations.map(r=>r.decrease+' '+r.currency).join(' / ')+'；含并发消费、充值或赠额变动，非本轮精确实扣。':'尚无可用账户余额观测；不以官方单价估算冒充实扣。';
 }
 
-/* --- iterative test charts: one metric per tab (yuyu) --- */
-const EVO_METRICS={
-  tokens:{label:'单步 token',pick:s=>s.tokens,unit:'token',color:'#b7ff50',
-          note:'这一步消耗的 token。转交的步骤不调用本地模型，所以是 0'},
-  seconds:{label:'单步耗时',pick:s=>s.seconds,unit:'秒',color:'#7fd1ff',
-           note:'这一步从提问到试跑完成的墙钟时间；转交的步骤为 0'},
-  failure:{label:'这一步失败了吗',pick:s=>(s.attempted&&!s.ok)?1:0,unit:'',color:'#ff8a5c',
-           note:'1=本地尝试失败，0=成功或直接转交。能力表学会之前会反复出现 1，学会之后变成 0'},
-  evidence:{label:'有证据路由',pick:s=>s.evidenced_ratio,unit:'%',color:'#ffd166',
-            note:'路由时能力表里已有这个数据桶记录的比例；0% = 全靠试，越高说明越"学会了再派"'}
+/* --- iterative test: per-round charts (yuyu) --- */
+let EVO_DATA=null, EVO_METRIC='tokens';
+const EVO_ROUND_METRICS={
+  tokens:{label:'每轮 token 消耗量',short:'token',color:'#b7ff50',
+          pick:g=>g.reduce((a,s)=>a+(s.tokens||0),0),fmt:v=>String(Math.round(v)),unit:'token',
+          note:'这一轮 7 个任务真正消耗的 token 合计；转回的步骤不调用本地模型，记为 0'},
+  seconds:{label:'每轮耗时',short:'秒',color:'#7fd1ff',
+           pick:g=>g.reduce((a,s)=>a+(s.seconds||0),0),fmt:v=>v.toFixed(1),unit:'秒',
+           note:'这一轮所有步骤的墙钟时间合计'},
+  failures:{label:'每轮错误步骤',short:'次',color:'#ff8a5c',
+            pick:g=>g.filter(s=>s.attempted&&!s.ok).length,fmt:v=>String(Math.round(v)),unit:'次',
+            note:'这一轮里本地尝试失败的步数；能力表学会之后不再增加'},
+  evidence:{label:'有证据路由',short:'%',color:'#ffd166',
+            pick:g=>g.filter(s=>s.decision!=='unproven_explore').length/g.length*100,fmt:v=>Math.round(v)+'%',unit:'%',
+            note:'这一轮里"先查能力表再派"的步数占比；越高说明越不是瞎试'}
 };
 
-function evoScale(values,ticks){
-  const max=Math.max(1,...values),min=0;
-  const step=(max-min)/ticks;
-  return {max,min,step,ticks:Array.from({length:ticks+1},(_,i)=>min+step*i)};
-}
-
-function evoLine(steps,metric){
-  const W=680,H=260,L=64,R=24,T=28,B=44;
-  const vals=steps.map(metric.pick);
-  const n=vals.length;
-  const {max,ticks:tv}=evoScale(vals,4);
-  const xs=i=>L+(n<=1?0:(W-L-R)*i/(n-1));
-  const ys=v=>T+(H-T-B)*(1-(v/max||0));
-  let grid='';
-  tv.forEach(v=>{
-    grid+=`<line x1="${L}" y1="${ys(v)}" x2="${W-R}" y2="${ys(v)}" stroke="#16402a"/>`;
-    grid+=`<text x="${L-8}" y="${ys(v)+4}" fill="#7fbf98" font-size="11" text-anchor="end">${Math.round(v)}</text>`;
-  });
-  const points=vals.map((v,i)=>`${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(' ');
-  let dots='';
-  vals.forEach((v,i)=>{dots+=`<circle cx="${xs(i)}" cy="${ys(v)}" r="3" fill="#0b1a12" stroke="${metric.color}" stroke-width="2"/>`;});
-  let xlabels='';
-  steps.forEach((s,i)=>{if(n<=12||i%Math.ceil(n/10)===0||i===n-1){
-    xlabels+=`<text x="${xs(i)}" y="${H-B+18}" fill="#7fbf98" font-size="10" text-anchor="middle">${s.step}</text>`;}});
-  let rounds='',last=0;
-  steps.forEach((s,i)=>{if(s.round!==last){last=s.round;
-    rounds+=`<line x1="${xs(i)}" y1="${T}" x2="${xs(i)}" y2="${H-B}" stroke="#2b5c3a" stroke-dasharray="4 4"/>`;
-    rounds+=`<text x="${xs(i)+4}" y="${T-8}" fill="#7fbf98" font-size="10">第${s.round}轮</text>`;}});
-  const lastVal=vals[n-1]||0;
-  return grid+rounds+
-    `<polyline fill="none" stroke="${metric.color}" stroke-width="2.5" points="${points}"/>`+dots+xlabels+
-    `<text x="${W-R}" y="${T-10}" fill="${metric.color}" font-size="12" text-anchor="end">${metric.label}：${Math.round(lastVal)}${metric.unit}</text>`;
-}
-
-function evoBars(steps,metric){
-  const W=680,H=260,L=64,R=24,T=28,B=44;
+function evoRoundChart(steps){
+  const metric=EVO_ROUND_METRICS[EVO_METRIC];
+  const W=680,H=250,L=72,R=24,T=32,B=58;
   const rounds=[...new Set(steps.map(s=>s.round))];
-  const avgTok=rounds.map(r=>{const g=steps.filter(s=>s.round===r);return g.reduce((a,s)=>a+(s.cumulative_tokens||0),0)/g.length;});
-  const avgSec=rounds.map(r=>{const g=steps.filter(s=>s.round===r);return g.reduce((a,s)=>a+(s.seconds||0),0)/g.length;});
-  const maxTok=Math.max(1,...avgTok);
-  const bw=(W-L-R)/rounds.length;
+  const data=rounds.map(r=>{const g=steps.filter(s=>s.round===r);
+    return {round:r,value:metric.pick(g),fails:g.filter(s=>s.attempted&&!s.ok).length,
+            calls:g.filter(s=>s.attempted).length,tokens:g.reduce((a,s)=>a+(s.tokens||0),0)};});
+  const max=Math.max(1,...data.map(d=>d.value));
+  const bw=(W-L-R)/data.length;
   let out='';
-  rounds.forEach((r,i)=>{
-    const h=(H-T-B)*(avgTok[i]/maxTok);
-    const x=L+i*bw+bw*0.18,w=bw*0.64,y=H-B-h;
-    out+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#a78bfa" opacity="0.55" rx="4"/>`;
-    out+=`<text x="${x+w/2}" y="${y-6}" fill="#c9b6ff" font-size="11" text-anchor="middle">${Math.round(avgTok[i])}</text>`;
-    out+=`<text x="${x+w/2}" y="${H-B+18}" fill="#7fbf98" font-size="11" text-anchor="middle">第${r}轮</text>`;
-    out+=`<text x="${x+w/2}" y="${H-B+34}" fill="#7fbf98" font-size="10" text-anchor="middle">${avgSec[i].toFixed(2)}s/任务</text>`;
+  [0,0.25,0.5,0.75,1].forEach(f=>{
+    const y=T+(H-T-B)*(1-f);
+    out+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="#16402a"/>`;
+    out+=`<text x="${L-8}" y="${y+4}" fill="#7fbf98" font-size="11" text-anchor="end">${metric.fmt(max*f)}</text>`;
   });
-  out+=`<text x="${L-8}" y="${T+4}" fill="#7fbf98" font-size="11" text-anchor="end">${Math.round(maxTok)}</text>`;
-  out+=`<text x="${W-R}" y="${T-10}" fill="#a78bfa" font-size="12" text-anchor="end">平均 token / 轮</text>`;
+  data.forEach((d,i)=>{
+    const h=(H-T-B)*(d.value/max);
+    const x=L+i*bw+bw*0.22,w=bw*0.56,y=H-B-h;
+    out+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${metric.color}" opacity="0.85"/>`;
+    out+=`<text x="${x+w/2}" y="${y-10}" fill="${metric.color}" font-size="15" font-weight="700" text-anchor="middle">${metric.fmt(d.value)}</text>`;
+    out+=`<text x="${x+w/2}" y="${H-B+22}" fill="#9fd6b3" font-size="12" text-anchor="middle">第 ${d.round} 轮</text>`;
+    out+=`<text x="${x+w/2}" y="${H-B+38}" fill="#7fbf98" font-size="11" text-anchor="middle">${d.tokens} token · 失败 ${d.fails}/${d.calls}</text>`;
+  });
+  out+=`<text x="${W-R}" y="${T-12}" fill="${metric.color}" font-size="12" text-anchor="end">${metric.label}（每轮）</text>`;
   return out;
 }
 
-let EVO_DATA=null,EVO_METRIC='tokens';
-function renderEvoChart(){
-  if(!EVO_DETAIL) EVO_DETAIL={};
-  if(!EVO_DATA) return;
-  const steps=EVO_DATA.steps||[];
-  const metric=EVO_METRICS[EVO_METRIC];
-  const caption=document.getElementById('evo-caption');
-  if(!steps.length){document.getElementById('evo-chart').innerHTML='';return;}
-  document.getElementById('evo-chart').innerHTML=metric.round?evoBars(steps,metric):evoLine(steps,metric);
-  caption.textContent=metric.note;
-  document.querySelectorAll('.evo-tab').forEach(b=>b.classList.toggle('is-on',b.dataset.metric===EVO_METRIC));
-}
-let EVO_DETAIL=null;
 async function renderEvolution(){
-  const card=document.getElementById('evolution-card');if(!card)return;
+  if(!document.getElementById('evolution-card')) return;
   let data;
   try{data=await (await fetch('/static/evolution.json',{cache:'no-store'})).json();}catch(e){return;}
   const steps=data.steps||[];
   const note=document.getElementById('evo-note');
   if(!steps.length){note.textContent='数据为空。';return;}
-  const s=data.summary||{};
   EVO_DATA=data;
+  const s=data.summary||{};
   note.textContent='模型 '+(data.model||'')+' · 模式 '+(data.mode_label||'')+' · '+steps.length+' 步 / '+
-    (data.rounds||0)+' 轮 · 通过 '+(s.passed||0)+' · 浪费 '+(s.wasted_local_calls||0)+
-    ' 次 · 转交 '+(s.delegated||0)+' 次 · token '+(s.tokens||0)+' · 生成于 '+(data.generated_at||'');
+    (data.rounds||0)+' 轮 · 通过 '+(s.passed||0)+' · 失败 '+(s.wasted_local_calls||0)+
+    ' 次 · 转交 '+(s.delegated||0)+' 次 · token 合计 '+(s.tokens||0);
+  document.getElementById('evo-chart').innerHTML=evoRoundChart(steps);
+  document.getElementById('evo-caption').textContent=EVO_ROUND_METRICS[EVO_METRIC].note;
+  document.querySelectorAll('.evo-tab').forEach(b=>b.classList.toggle('is-on',b.dataset.metric===EVO_METRIC));
   document.getElementById('evo-rows').getElementsByTagName('tbody')[0].innerHTML=steps.map(x=>
     `<tr><td>${x.step}</td><td>${x.round}</td><td>${x.dataset}</td><td>${x.decision}</td>`+
     `<td>${x.attempted?(x.ok?'通过':'失败'):'转交'}</td><td>${x.seconds}s</td><td>${x.tokens||0}</td></tr>`).join('');
-  renderEvoChart();
 }
+
 async function evolutionCall(path,body){
   const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
   if(!r.ok) throw new Error((await r.json().catch(()=>({}))).detail||('HTTP '+r.status));
@@ -215,6 +202,6 @@ function bindEvolution(){
   faulty.onclick=async()=>{try{await evolutionCall('/ml/evolution/run',{mode:'faulty'});pollEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.getElementById('evo-run-clean').onclick=async()=>{try{await evolutionCall('/ml/evolution/run',{mode:'clean'});pollEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.getElementById('evo-rollback').onclick=async()=>{try{const r=await evolutionCall('/ml/evolution/rollback',{});document.getElementById('evo-status').textContent=r.restored||'已回退';await renderEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
-  document.querySelectorAll('.evo-tab').forEach(b=>{b.onclick=()=>{EVO_METRIC=b.dataset.metric;renderEvoChart();};});
+  document.querySelectorAll('.evo-tab').forEach(b=>{b.onclick=()=>{EVO_METRIC=b.dataset.metric;renderEvolution();};});
 }
 document.addEventListener('DOMContentLoaded',()=>{renderEvolution();bindEvolution();});

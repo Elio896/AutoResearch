@@ -35,3 +35,8 @@ button,.button{border:1px solid #779763;border-radius:0;background:#102713;color
 .evo-tab:hover{border-color:#3f8f5f}
 .evo-tab.is-on{background:#b7ff50;border-color:#b7ff50;color:#08150c;font-weight:600}
 #evo-chart{background:#08150c;border:1px solid #16402a;border-radius:8px}
+
+/* flow animation (yuyu) */
+.flow-lines path{stroke-dasharray:7 9;opacity:.22;transition:opacity .25s}
+.flow-lines path.on{opacity:1;stroke-width:2.5;animation:flowdash 1s linear infinite}
+@keyframes flowdash{to{stroke-dashoffset:-16}}
