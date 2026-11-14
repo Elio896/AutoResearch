@@ -20,6 +20,8 @@ class ResearchSession:
         if metric not in ('f1_macro', 'f1_minority'):
             raise ValueError('Unsupported selection metric.')
         self.metric, self.pos_label = metric, str(pos_label)
+        self.csv_path = csv_path          # 多种子重跑要用同一份数据
+        self.feature_decisions = feature_decisions
         self.target = str(target)          # 轨迹要记目标列名，供审计
         raw = Path(csv_path).read_bytes()
         self.dataset_sha256 = hashlib.sha256(raw).hexdigest()
@@ -85,6 +87,39 @@ class ResearchSession:
                 'class_counts_truncated': len(counts) > 20,
                 'selection_metric': self.metric,
                 'positive_class_id': self.positive_id if self.metric == 'f1_minority' else None}
+
+    def run_multi_seed(self, model='logistic_regression', parameters=None,
+                       seeds=(42, 7, 2026, 1, 13)):
+        """同一配置在多个种子上各跑一次，用来判断"提升是不是噪声"。
+
+        为什么要成对：候选和最优在**同一个种子**上比，数据划分带来的波动
+        被抵消，剩下的才归因于改动本身。
+
+        每次都是一个完整的训练+验证（真跑），所以 fits = len(seeds)，
+        但对外记账仍算 1 次实验——调用方需要知道墙钟是 S 倍。
+        """
+        scores = []
+        details = []
+        for seed in seeds:
+            clone = ResearchSession(
+                self.csv_path, self.target,
+                metric=self.metric, pos_label=self.pos_label, seed=seed,
+            )
+            result = clone.run(model, parameters or {})
+            score = result.get('validation_score', result.get('validation_f1'))
+            scores.append(float(score))
+            details.append({'seed': seed, 'score': float(score),
+                            'experiment_id': result.get('experiment_id')})
+        return {
+            'model': model, 'parameters': parameters or {},
+            'seeds': list(seeds), 'per_seed': scores,
+            'seed_mean': sum(scores) / len(scores) if scores else 0.0,
+            'seed_std': (sum((x - sum(scores) / len(scores)) ** 2 for x in scores)
+                         / (len(scores) - 1)) ** 0.5 if len(scores) > 1 else 0.0,
+            'details': details,
+            'fits': len(seeds),
+            'note': f'{len(seeds)} 个种子各跑一次；记账算 1 次实验，墙钟是 {len(seeds)} 倍',
+        }
 
     def _metrics(self, actual, predictions, prefix):
         from sklearn.metrics import f1_score, precision_score, recall_score
