@@ -1,6 +1,6 @@
 # 原版千问 · 当前提交版
 
-安装及演示请先阅读 [提交说明](docs/qwen-demo-submission.md)。保留原版千问3B，不使用已撤下的 v24 包。
+安装及演示请先阅读 [提交说明](docs/qwen-demo-submission.md)。保留原版千问 3B 演示回路。
 
 > Website now defaults to token-saving mode. Real measured results and quality limits: [token-economy.md](docs/token-economy.md).
 
