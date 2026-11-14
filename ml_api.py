@@ -191,7 +191,7 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
 
     @app.get('/static/{asset}',include_in_schema=False)
     def asset_file(asset:str):
-        if asset not in {'ml-app.js','ml-app.css','pixel-theme.css','evolution.json'}:
+        if asset not in {'ml-app.js','ml-app.css','pixel-theme.css','workflow-viz.js','evolution.json'}:
             raise HTTPException(404,'Unknown asset.')
         return FileResponse(static/asset)
     busy=threading.Lock()

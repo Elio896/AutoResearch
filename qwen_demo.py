@@ -84,9 +84,13 @@ def run(store,source,*,rounds=3,mode='mixed',reset=True,low=None,high=None,high_
     tasks=tasks_for(Path(source),mode,folder/'data');memory=CapabilityMemory(store.memory)
     low=low or Qwen();clients={'low':low}
     if high is not None:clients['high']=high
-    gateway=TierBudget(_ClientSwitch(clients),limits or ModelLimits(36,60000,300),price_feed=price_feed)
+    class ObservedSwitch(_ClientSwitch):
+        def __call__(self,messages,timeout):
+            observe('worker_started',self.role,model=getattr(self.clients[self.role],'model','configured'))
+            return super().__call__(messages,timeout)
+    gateway=TierBudget(ObservedSwitch(clients),limits or ModelLimits(36,60000,300),price_feed=price_feed)
     report={'run_id':run_id,'model':getattr(low,'model',MODEL),'rounds':rounds,'mode_label':{'mixed':'原版混合难度 · 真实高站接手','clean':'原版内置数据','faulty':'原版截断故障注入'}[mode],
-        'snapshot':snapshot,'quality_gate':.6,'steps':[],'faulty':mode=='faulty','notes':['保留原版千问3B及原始六组数据；混合难度为合成评测数据。','通过必须有真实训练且验证宏F1≥0.6；转交本身不算成功。','本地API费用为零，不含设备电力；高级模型可能产生费用，官方估算非账单实扣。','经验与图表回退仅作用于演示；最终测试集未打开。']}
+        'snapshot':snapshot,'quality_gate':.6,'steps':[],'events':[],'active':None,'faulty':mode=='faulty','notes':['保留原版千问3B及原始六组数据；混合难度为合成评测数据。','通过必须有真实训练且验证宏F1≥0.6；转交本身不算成功。','本地API费用为零，不含设备电力；高级模型可能产生费用，官方估算非账单实扣。','经验与图表回退仅作用于演示；最终测试集未打开。']}
     def persist(state='running'):
         report['state']=state;usage=gateway.snapshot();report['usage']=usage;s=report['steps']
         report['summary']={'tasks':len(tasks)*rounds,'executed':len(s),'passed':sum(x['ok'] for x in s),'completed':sum(x.get('delivered',False) for x in s),
@@ -94,20 +98,30 @@ def run(store,source,*,rounds=3,mode='mixed',reset=True,low=None,high=None,high_
             'wasted_local_calls':sum(x['attempted'] and not x['low_ok'] for x in s),'tokens':usage['known_tokens'],'unknown_usage_calls':usage['unreconciled_calls'],
             'official_usd':usage['costs']['calculated_total_usd'],'final_evidenced_ratio':s[-1]['evidenced_ratio'] if s else 0}
         save(store.root/'report.json',report);save(folder/'report.json',report)
+    context={}
+    def observe(event,tier=None,**extra):
+        row={'event':event,'tier':tier,'at':time.time(),**context,**extra}
+        report['events'].append(row);report['active']=row
+        persist()
     persist();evidenced=0;stopped=False
     for round_no in range(1,rounds+1):
         for name,path,target in tasks:
             if gateway.snapshot()['calls']>=gateway.limits.max_calls or gateway.snapshot()['elapsed_seconds']>=gateway.limits.max_seconds:stopped=True;break
+            context.update(round=round_no,total_rounds=rounds,dataset=name,step=len(report['steps'])+1)
+            observe('data_ready','source')
             began=time.monotonic();before=len(gateway.records);session=ResearchSession(path,target);session.ensure_ready();profile=session.planning_context()
             verdict=memory.route(report['model'],'model_search',profile)
             step={'step':len(report['steps'])+1,'round':round_no,'dataset':name,'decision':verdict['reason'],'bucket':verdict.get('bucket'),'tier':verdict['tier'],
                 'attempted':False,'high_attempted':False,'low_ok':False,'ok':False,'score':None,'error':None,'delivered':False}
+            observe('route','classifier',target=verdict['tier'],reason=verdict['reason'])
             best=None;history=[]
             for tier in (['low','high'] if verdict['tier']=='low' else ['high']):
                 if tier=='high' and step['low_ok']:break
+                if tier=='high' and verdict['tier']=='low':observe('escalation','high',reason=step['error'] or 'low_failed_quality_gate')
                 if tier=='high' and 'high' not in clients:
                     try:clients['high']=high_factory()
-                    except Exception:step['error']='high_model_not_configured';break
+                    except Exception:
+                        step['error']='high_model_not_configured';observe('worker_failed','high',reason=step['error']);break
                 client=clients[tier]
                 if tier=='high':report['high_model']=getattr(client,'model','configured')
                 old_cap=getattr(client,'max_output_tokens',None)
@@ -115,6 +129,7 @@ def run(store,source,*,rounds=3,mode='mixed',reset=True,low=None,high=None,high_
                 call_before=len(gateway.records)
                 try:
                     proposal=Scientist(gateway.for_role(tier),DEFAULT_ALLOWED).propose(history,profile,feedback='Require validation macro F1 >= 0.6. Prior failure: '+str(step['error']),timeout=60)
+                    observe('training_started',tier,model=getattr(client,'model','configured'))
                     result=session.run(proposal['model'],proposal.get('parameters') or {})
                     score=result['validation_f1'];ok=score>=.6
                     step[tier+'_score']=score
@@ -123,13 +138,17 @@ def run(store,source,*,rounds=3,mode='mixed',reset=True,low=None,high=None,high_
                     history.append({'model':result['model'],'parameters':result['parameters'],'score':score})
                     if best is None or score>best['validation_f1']:best=result
                     if not ok:step['error']='below_quality_gate'
-                except ModelBudgetExceeded:step['error']='budget_exhausted';stopped=True;break
+                    observe('experiment',tier,score=score,ok=ok)
+                except ModelBudgetExceeded:
+                    step['error']='budget_exhausted';stopped=True;observe('stopped',tier,reason=step['error']);break
                 except Exception as exc:
                     step['error']=safe_error_code(exc)
+                    observe('worker_failed',tier,reason=step['error'])
                     if isinstance(exc,ValueError):memory.record(getattr(client,'model','configured'),'model_search',False,'invalid_proposal',profile)
                 finally:
                     step['attempted' if tier=='low' else 'high_attempted']=len(gateway.records)>call_before
                     if old_cap is not None:client.max_output_tokens=old_cap
+            observe('verification','reviewer',reason='program_validation_only')
             if best is not None:
                 step['score']=best['validation_f1'];step['ok']=step['score']>=.6;step['delivered']=True
                 output=deliver(session,best,'Original Qwen demo validation predictions')
@@ -142,7 +161,7 @@ def run(store,source,*,rounds=3,mode='mixed',reset=True,low=None,high=None,high_
             step['seconds']=round(time.monotonic()-began,2);step['cumulative_tokens']=gateway.snapshot()['known_tokens']
             evidenced+=verdict['reason']!='unproven_explore';step['evidenced_ratio']=round(100*evidenced/(len(report['steps'])+1),1)
             step['status']='通过' if step['ok'] else '未达标' if step['delivered'] else '未完成'
-            report['steps'].append(step);persist()
+            report['steps'].append(step);observe('iteration_completed','reviewer',ok=step['ok'])
             print(json.dumps({k:step[k] for k in ['step','round','dataset','decision','status','score','tokens']},ensure_ascii=True),flush=True)
             if stopped:break
         if stopped:break

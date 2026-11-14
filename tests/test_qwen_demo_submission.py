@@ -59,3 +59,17 @@ class QwenDemoSubmissionTests(unittest.TestCase):
                 self.assertEqual(api.get('/ml/evolution/predictions/1').status_code,200)
                 self.assertEqual(api.post('/ml/evolution/rollback').status_code,200)
                 self.assertEqual(api.get('/ml/evolution/report').json()['steps'],[])
+
+    def test_live_high_phase_is_persisted_after_budget_admission(self):
+        with tempfile.TemporaryDirectory() as d:
+            store=DemoStore(Path(d)/'demo');seen=[]
+            class InspectHigh(Reply):
+                def __call__(self,messages,timeout=30):
+                    report=store.report()
+                    seen.append((report['active']['event'],report['active']['tier'],report['usage']['records'][-1]['role']))
+                    return super().__call__(messages,timeout)
+            with patch('qwen_demo.tasks_for',return_value=self.data(d)):
+                report=run(store,d,rounds=1,low=Reply(['bad'],MODEL),high=InspectHigh([candidate()],'high'))
+            self.assertEqual(seen,[('worker_started','high','high')])
+            self.assertTrue(any(e['event']=='escalation' for e in report['events']))
+            self.assertEqual(report['events'][-1]['event'],'iteration_completed')
