@@ -161,6 +161,8 @@
 
   <section class="card hidden" id="result">
     <h2>③ 结果</h2>
+    <div id="risk-banner" class="hidden" style="margin-bottom:14px;padding:12px 14px;
+         background:#fffbeb;border:1px solid #f0c060;border-radius:10px;font-size:13px"></div>
     <div class="stats">
       <div><div class="big-number" id="r-score">—</div><div class="big-label">最佳验证分数</div></div>
       <div><div class="big-number" id="r-model" style="font-size:20px">—</div><div class="big-label">最佳方案</div></div>
@@ -727,9 +729,34 @@ const applyProgress = (data) => {
   $('r-model').textContent = summary.best_model || '—';
   $('r-ver').textContent = experiments.length;
   $('r-rb').textContent = summary.evoundo_rollbacks ?? 0;
+  renderRiskBanner(experiments);
   renderResearch(experiments, summary, {});
   renderMultiCharts(experiments);
 };
+
+function renderRiskBanner(experiments) {
+  const banner = $('risk-banner');
+  // 收集所有实验里带出来的可疑特征（去重）
+  const seen = new Map();
+  for (const exp of experiments || []) {
+    for (const warn of exp.risk_warnings || []) {
+      if (!seen.has(warn.column)) seen.set(warn.column, warn);
+    }
+  }
+  if (!seen.size) {
+    banner.classList.add('hidden');
+    banner.innerHTML = '';
+    return;
+  }
+  const items = [...seen.values()].map((w) => {
+    const sig = (w.signals || []).join('、');
+    return `<b>${w.column}</b>（${w.level}：${sig}）`;
+  }).join('；');
+  banner.innerHTML = `⚠ 数据里有 <b>${seen.size}</b> 个可疑特征，已跑但请人工确认：${items}
+    <div style="margin-top:4px;color:var(--muted);font-size:12px">
+      这些列没被自动剔除（避免误删），但它们的信号说明可能泄漏，分数可能偏高。</div>`;
+  banner.classList.remove('hidden');
+}
 
 $('step-btn').addEventListener('click', async () => {
   if (!sessionId) { alert('先点「开始分析」并同意一次'); return; }
