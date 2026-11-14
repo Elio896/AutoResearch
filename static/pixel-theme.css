@@ -28,3 +28,10 @@ button,.button{border:1px solid #779763;border-radius:0;background:#102713;color
 
 /* hero-bot-layout (yuyu) */
 @media(min-width:801px){.hero{grid-template-columns:minmax(0,1fr) 260px;align-items:center}}
+
+.evo-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 6px}
+.evo-tab{background:#0d2418;border:1px solid #1d4a30;color:#9fd6b3;border-radius:6px;
+  padding:6px 10px;font-size:12px;cursor:pointer}
+.evo-tab:hover{border-color:#3f8f5f}
+.evo-tab.is-on{background:#b7ff50;border-color:#b7ff50;color:#08150c;font-weight:600}
+#evo-chart{background:#08150c;border:1px solid #16402a;border-radius:8px}

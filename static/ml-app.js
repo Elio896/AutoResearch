@@ -97,7 +97,88 @@ function renderAccountBilling(billing){
  $('account-window').textContent=observations.length?'实际账户窗口变化：'+observations.map(r=>r.decrease+' '+r.currency).join(' / ')+'；含并发消费、充值或赠额变动，非本轮精确实扣。':'尚无可用账户余额观测；不以官方单价估算冒充实扣。';
 }
 
-/* --- evolution chart (yuyu) --- */
+/* --- iterative test charts: one metric per tab (yuyu) --- */
+const EVO_METRICS={
+  tokens:{label:'累计 token',pick:s=>s.cumulative_tokens,unit:'token',color:'#b7ff50',
+          note:'每一步本地推理实际消耗的 token 累计（本地模型，零 API 花费）'},
+  seconds:{label:'单任务耗时',pick:s=>s.seconds,unit:'秒',color:'#7fd1ff',
+           note:'每一步从提问到试跑完成的墙钟时间；转交的步骤不调用本地模型，耗时为 0'},
+  waste:{label:'累计浪费调用',pick:s=>s.cumulative_wasted,unit:'次',color:'#ff8a5c',
+         note:'本地模型尝试失败、白跑一次的累计次数；能力表学会之后不再增加'},
+  evidence:{label:'有证据路由',pick:s=>s.evidenced_ratio,unit:'%',color:'#ffd166',
+            note:'路由时能力表里已有该数据桶记录的比例；0% 表示全靠试'},
+  round:{label:'按轮次汇总',round:true,unit:'token',color:'#a78bfa',
+         note:'每一轮 7 个任务的平均 token 与平均耗时'}
+};
+
+function evoScale(values,ticks){
+  const max=Math.max(1,...values),min=0;
+  const step=(max-min)/ticks;
+  return {max,min,step,ticks:Array.from({length:ticks+1},(_,i)=>min+step*i)};
+}
+
+function evoLine(steps,metric){
+  const W=680,H=260,L=64,R=24,T=28,B=44;
+  const vals=steps.map(metric.pick);
+  const n=vals.length;
+  const {max,ticks:tv}=evoScale(vals,4);
+  const xs=i=>L+(n<=1?0:(W-L-R)*i/(n-1));
+  const ys=v=>T+(H-T-B)*(1-(v/max||0));
+  let grid='';
+  tv.forEach(v=>{
+    grid+=`<line x1="${L}" y1="${ys(v)}" x2="${W-R}" y2="${ys(v)}" stroke="#16402a"/>`;
+    grid+=`<text x="${L-8}" y="${ys(v)+4}" fill="#7fbf98" font-size="11" text-anchor="end">${Math.round(v)}</text>`;
+  });
+  const points=vals.map((v,i)=>`${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(' ');
+  let dots='';
+  vals.forEach((v,i)=>{dots+=`<circle cx="${xs(i)}" cy="${ys(v)}" r="3" fill="#0b1a12" stroke="${metric.color}" stroke-width="2"/>`;});
+  let xlabels='';
+  steps.forEach((s,i)=>{if(n<=12||i%Math.ceil(n/10)===0||i===n-1){
+    xlabels+=`<text x="${xs(i)}" y="${H-B+18}" fill="#7fbf98" font-size="10" text-anchor="middle">${s.step}</text>`;}});
+  let rounds='',last=0;
+  steps.forEach((s,i)=>{if(s.round!==last){last=s.round;
+    rounds+=`<line x1="${xs(i)}" y1="${T}" x2="${xs(i)}" y2="${H-B}" stroke="#2b5c3a" stroke-dasharray="4 4"/>`;
+    rounds+=`<text x="${xs(i)+4}" y="${T-8}" fill="#7fbf98" font-size="10">第${s.round}轮</text>`;}});
+  const lastVal=vals[n-1]||0;
+  return grid+rounds+
+    `<polyline fill="none" stroke="${metric.color}" stroke-width="2.5" points="${points}"/>`+dots+xlabels+
+    `<text x="${W-R}" y="${T-10}" fill="${metric.color}" font-size="12" text-anchor="end">${metric.label}：${Math.round(lastVal)}${metric.unit}</text>`;
+}
+
+function evoBars(steps,metric){
+  const W=680,H=260,L=64,R=24,T=28,B=44;
+  const rounds=[...new Set(steps.map(s=>s.round))];
+  const avgTok=rounds.map(r=>{const g=steps.filter(s=>s.round===r);return g.reduce((a,s)=>a+(s.cumulative_tokens||0),0)/g.length;});
+  const avgSec=rounds.map(r=>{const g=steps.filter(s=>s.round===r);return g.reduce((a,s)=>a+(s.seconds||0),0)/g.length;});
+  const maxTok=Math.max(1,...avgTok);
+  const bw=(W-L-R)/rounds.length;
+  let out='';
+  rounds.forEach((r,i)=>{
+    const h=(H-T-B)*(avgTok[i]/maxTok);
+    const x=L+i*bw+bw*0.18,w=bw*0.64,y=H-B-h;
+    out+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#a78bfa" opacity="0.55" rx="4"/>`;
+    out+=`<text x="${x+w/2}" y="${y-6}" fill="#c9b6ff" font-size="11" text-anchor="middle">${Math.round(avgTok[i])}</text>`;
+    out+=`<text x="${x+w/2}" y="${H-B+18}" fill="#7fbf98" font-size="11" text-anchor="middle">第${r}轮</text>`;
+    out+=`<text x="${x+w/2}" y="${H-B+34}" fill="#7fbf98" font-size="10" text-anchor="middle">${avgSec[i].toFixed(2)}s/任务</text>`;
+  });
+  out+=`<text x="${L-8}" y="${T+4}" fill="#7fbf98" font-size="11" text-anchor="end">${Math.round(maxTok)}</text>`;
+  out+=`<text x="${W-R}" y="${T-10}" fill="#a78bfa" font-size="12" text-anchor="end">平均 token / 轮</text>`;
+  return out;
+}
+
+let EVO_DATA=null,EVO_METRIC='tokens';
+function renderEvoChart(){
+  if(!EVO_DETAIL) EVO_DETAIL={};
+  if(!EVO_DATA) return;
+  const steps=EVO_DATA.steps||[];
+  const metric=EVO_METRICS[EVO_METRIC];
+  const caption=document.getElementById('evo-caption');
+  if(!steps.length){document.getElementById('evo-chart').innerHTML='';return;}
+  document.getElementById('evo-chart').innerHTML=metric.round?evoBars(steps,metric):evoLine(steps,metric);
+  caption.textContent=metric.note;
+  document.querySelectorAll('.evo-tab').forEach(b=>b.classList.toggle('is-on',b.dataset.metric===EVO_METRIC));
+}
+let EVO_DETAIL=null;
 async function renderEvolution(){
   const card=document.getElementById('evolution-card');if(!card)return;
   let data;
@@ -106,40 +187,16 @@ async function renderEvolution(){
   const note=document.getElementById('evo-note');
   if(!steps.length){note.textContent='数据为空。';return;}
   const s=data.summary||{};
-  note.textContent='模型 '+(data.model||'')+' · '+steps.length+' 步（'+data.rounds+' 轮）· 通过 '+(s.passed||0)+
-    ' · 浪费本地调用 '+(s.wasted_local_calls||0)+' 次 · 转交 '+(s.delegated||0)+
-    ' 次 · 最终有证据路由 '+(s.final_evidenced_ratio||0)+'%'+(data.faulty?' · 含故障实验':'');
-  const W=640,H=200,L=46,R=12,T=16,B=30,n=steps.length;
-  const xs=i=>L+(n<=1?0:(W-L-R)*i/(n-1));
-  const ev=steps.map(x=>x.evidenced_ratio||0);
-  const waste=steps.map(x=>x.cumulative_wasted||0);
-  const secs=steps.map(x=>x.seconds||0);
-  const maxWaste=Math.max(1,...waste), maxSec=Math.max(1,...secs);
-  const yPct=v=>T+(H-T-B)*(1-v/100);
-  const yWaste=v=>T+(H-T-B)*(1-v/maxWaste);
-  const ySec=v=>T+(H-T-B)*(1-v/maxSec);
-  const poly=(arr,f,c,d)=>`<polyline fill="none" stroke="${c}" stroke-width="${d||2}" ${d?'stroke-dasharray="4 3"':''} points="${arr.map((v,i)=>xs(i).toFixed(1)+','+f(v).toFixed(1)).join(' ')}"/>`;
-  let grid='';
-  [0,25,50,75,100].forEach(v=>{grid+=`<line x1="${L}" y1="${yPct(v)}" x2="${W-R}" y2="${yPct(v)}" stroke="#123d26"/>`+
-    `<text x="6" y="${yPct(v)+4}" fill="#7fbf98" font-size="10">${v}%</text>`;});
-  let rounds='',last=0;
-  steps.forEach((x,i)=>{if(x.round!==last){last=x.round;
-    rounds+=`<line x1="${xs(i)}" y1="${T}" x2="${xs(i)}" y2="${H-B}" stroke="#2b5c3a" stroke-dasharray="3 3"/>`+
-            `<text x="${xs(i)+3}" y="${T+10}" fill="#7fbf98" font-size="10">第${x.round}轮</text>`;}});
-  document.getElementById('evo-chart').innerHTML=grid+rounds+
-    poly(ev,yPct,'#b7ff50',2)+poly(waste,yWaste,'#ff8a5c',1.5)+poly(secs,ySec,'#78a94b',1.5)+
-    `<text x="${W-R-190}" y="${T+10}" fill="#b7ff50" font-size="10">— 有证据路由比例</text>`+
-    `<text x="${W-R-190}" y="${T+24}" fill="#ff8a5c" font-size="10">-- 累计浪费调用</text>`+
-    `<text x="${W-R-190}" y="${T+38}" fill="#78a94b" font-size="10">-- 单任务耗时</text>`;
+  EVO_DATA=data;
+  note.textContent='模型 '+(data.model||'')+' · 模式 '+(data.mode_label||'')+' · '+steps.length+' 步 / '+
+    (data.rounds||0)+' 轮 · 通过 '+(s.passed||0)+' · 浪费 '+(s.wasted_local_calls||0)+
+    ' 次 · 转交 '+(s.delegated||0)+' 次 · token '+(s.tokens||0)+' · 生成于 '+(data.generated_at||'');
   document.getElementById('evo-rows').getElementsByTagName('tbody')[0].innerHTML=steps.map(x=>
     `<tr><td>${x.step}</td><td>${x.round}</td><td>${x.dataset}</td><td>${x.decision}</td>`+
-    `<td>${x.attempted?(x.ok?'通过':'失败'):'转交'}</td><td>${x.seconds}s</td><td>${x.evidenced_ratio}%</td></tr>`).join('');
+    `<td>${x.attempted?(x.ok?'通过':'失败'):'转交'}</td><td>${x.seconds}s</td><td>${x.tokens||0}</td></tr>`).join('');
+  renderEvoChart();
 }
-document.addEventListener('DOMContentLoaded',()=>{if(document.getElementById('evolution-card'))renderEvolution();});
-
-
-/* --- evolution demo controls (yuyu) --- */
-async function evolutionCall(path, body){
+async function evolutionCall(path,body){
   const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
   if(!r.ok) throw new Error((await r.json().catch(()=>({}))).detail||('HTTP '+r.status));
   return r.json();
@@ -148,11 +205,11 @@ async function pollEvolution(){
   const status=document.getElementById('evo-status');
   for(let i=0;i<180;i++){
     const s=await (await fetch('/ml/evolution/status',{cache:'no-store'})).json();
-    status.textContent=s.state==='running'?('演示中… '+s.elapsed_hint):(s.state==='done'?'演示完成':'演示'+s.state);
+    status.textContent=s.state==='running'?('测验中… '+s.elapsed_hint):(s.state==='done'?'测验完成':'测验'+s.state);
     if(s.state!=='running'){await renderEvolution();return;}
     await new Promise(r=>setTimeout(r,2000));
   }
-  status.textContent='演示超时，看日志。';
+  status.textContent='测验超时，看日志。';
 }
 function bindEvolution(){
   const faulty=document.getElementById('evo-run-faulty');
@@ -160,5 +217,6 @@ function bindEvolution(){
   faulty.onclick=async()=>{try{await evolutionCall('/ml/evolution/run',{mode:'faulty'});pollEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.getElementById('evo-run-clean').onclick=async()=>{try{await evolutionCall('/ml/evolution/run',{mode:'clean'});pollEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.getElementById('evo-rollback').onclick=async()=>{try{const r=await evolutionCall('/ml/evolution/rollback',{});document.getElementById('evo-status').textContent=r.restored||'已回退';await renderEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
+  document.querySelectorAll('.evo-tab').forEach(b=>{b.onclick=()=>{EVO_METRIC=b.dataset.metric;renderEvoChart();};});
 }
-document.addEventListener('DOMContentLoaded',bindEvolution);
+document.addEventListener('DOMContentLoaded',()=>{renderEvolution();bindEvolution();});
