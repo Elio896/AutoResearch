@@ -133,7 +133,7 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
     _evo = {'proc': None, 'state': 'idle', 'started': None, 'log': ''}
 
     def _evo_script():
-        return Path(__file__).parent / 'artifacts' / 'acceptance-20261114' / 'evolution_demo.py'
+        return Path(__file__).parent / 'tools' / 'evolution_demo.py'
 
     def _evo_python():
         return sys.executable
@@ -171,7 +171,7 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
 
     @app.post('/ml/evolution/rollback')
     def evolution_rollback():
-        script = Path(__file__).parent / 'artifacts' / 'acceptance-20261114' / 'rollback_capability.py'
+        script = Path(__file__).parent / 'tools' / 'rollback_capability.py'
         out = _sp.run([_evo_python(), str(script), '--latest'], capture_output=True, text=True,
                       cwd=str(Path(__file__).parent))
         if out.returncode != 0:
