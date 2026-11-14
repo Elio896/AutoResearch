@@ -142,10 +142,10 @@ class ResearchSession:
             raise RuntimeError('Feature risk review required before training: ' +
                                ', '.join(self.risk_report['unresolved_columns']))
 
-    def run(self, model='logistic_regression', parameters=None):
+    def run(self, model='logistic_regression', parameters=None, preprocessing=None):
         from sklearn.compose import ColumnTransformer
         from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
-        from sklearn.impute import SimpleImputer
+        from sklearn.impute import MissingIndicator, SimpleImputer
         from sklearn.linear_model import LogisticRegression
         from sklearn.metrics import accuracy_score, f1_score
         from sklearn.pipeline import Pipeline
@@ -155,6 +155,31 @@ class ResearchSession:
             raise RuntimeError('Session finalized; further tuning is forbidden.')
         self.ensure_ready()
         parameters = dict(parameters or {})
+        # 预处理开关：二德子 2026-11-14 指出只调模型天花板很低，
+        # 表格任务的收益大半在数据这一侧（她们实测 readmission 加 isna 指示
+        # 变量后正例 F1 从 0.165 到 0.443）。这里只放可信的四个开关。
+        prep = {
+            'impute': 'median',              # median / mean / most_frequent
+            'encode': 'onehot',              # onehot / ordinal
+            'imbalance_strategy': 'none',    # none / class_weight
+            'add_missing_indicator': False,  # 新增 isna 列
+            **(preprocessing or {}),
+        }
+        allowed_prep = {
+            'impute': {'median', 'mean', 'most_frequent'},
+            'encode': {'onehot', 'ordinal'},
+            'imbalance_strategy': {'none', 'class_weight'},
+            'add_missing_indicator': {True, False},
+        }
+        if set(prep) - set(allowed_prep):
+            raise ValueError('Unsupported preprocessing key.')
+        for key, allowed_values in allowed_prep.items():
+            if prep[key] not in allowed_values:
+                raise ValueError(f'Unsupported value for {key}: {prep[key]}')
+        # imbalance_strategy=class_weight 必须在建 estimator 之前落到 parameters 上，
+        # 否则估器已经按旧参数造好了，改了也白改。
+        if prep['imbalance_strategy'] == 'class_weight' and 'class_weight' not in parameters:
+            parameters = {**parameters, 'class_weight': 'balanced'}
         allowed = {
             'logistic_regression': {'C', 'class_weight', 'max_iter'},
             'random_forest': {'n_estimators', 'max_depth', 'min_samples_leaf', 'class_weight'},
@@ -178,12 +203,30 @@ class ResearchSession:
             estimator = RandomForestClassifier(random_state=self.seed, n_jobs=1, **options)
         numeric = list(self.x.select_dtypes(include='number').columns)
         categorical = [column for column in self.x.columns if column not in numeric]
+        # 缺失指示变量交给 SimpleImputer 自己带出来（add_indicator=True），
+        # 比单独塞一个 MissingIndicator 稳——后者和 StandardScaler 串在一起时
+        # 维度对不上，会静默把分数打到 0。
+        numeric_steps = [('impute', SimpleImputer(
+            strategy=prep['impute'], keep_empty_features=True,
+            add_indicator=bool(prep['add_missing_indicator'])))]
+        numeric_steps.append(('scale', StandardScaler()))
+        if prep['encode'] == 'ordinal':
+            # 序数编码：类别直接映射成整数，树模型够用，维度不膨胀
+            from sklearn.preprocessing import OrdinalEncoder
+            categorical_steps = [
+                ('impute', SimpleImputer(strategy='most_frequent', keep_empty_features=True)),
+                ('encode', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)),
+            ]
+        else:
+            categorical_steps = [
+                ('impute', SimpleImputer(strategy='most_frequent', keep_empty_features=True)),
+                ('encode', OneHotEncoder(handle_unknown='ignore')),
+            ]
         preprocess = ColumnTransformer([
-            ('numeric', Pipeline([('impute', SimpleImputer(strategy='median', keep_empty_features=True)),
-                                  ('scale', StandardScaler())]), numeric),
-            ('categorical', Pipeline([('impute', SimpleImputer(strategy='most_frequent', keep_empty_features=True)),
-                                      ('encode', OneHotEncoder(handle_unknown='ignore'))]), categorical),
+            ('numeric', Pipeline(numeric_steps), numeric),
+            ('categorical', Pipeline(categorical_steps), categorical),
         ])
+        # imbalance_strategy 已经在建估器之前落进 parameters，这里不用再改
         pipeline = Pipeline([('preprocess', preprocess), ('model', estimator)])
         started = time.perf_counter()
         pipeline.fit(self.x.iloc[self.train_indices], self.y.iloc[self.train_indices])
