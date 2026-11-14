@@ -871,3 +871,13 @@ See docs/codex-v21-answer-safety.md. Review workspace: 445 tests OK; 13-pair/26-
 
 ## Codex V22 patch applied 2026-11-14T23:29:04.598997+08:00
 See docs/codex-v22-ui-billing.md. Review workspace: 453 tests OK; pixel UI and account-window billing regression, 0 new paid API calls. Live provider and 8018 restart still require deployment acceptance. Automatic strategy evolution remains disabled.
+
+## 上传 GitHub · 2026-11-14T23:3x (yuyu)
+
+仓库：`Elio896/EvoResearch`（private，main）。提交 `9d10d05`（136 文件）：V22 像素工作台 + 账户余额观测，含 V21 回答安全与 V20 单模型/重试。
+
+做法：`gh repo clone` 到临时目录（保留远端历史）→ robocopy 同步本地源码（排除 .git/.venv/artifacts/data/__pycache__/*.log/*.zip/*.dpapi）→ 提交前扫描 `sk-`/`ghp_`/`Bearer` 无一命中 → `git push origin HEAD:main`。
+
+校验：远端根目录含 `ml_api.py`、`billing_actual.py`、`answer_evidence.py`、`research_context.py`、`static/pixel-theme.css`、`docs/codex-v22-ui-billing.md`、`tests/test_actual_billing.py`；`artifacts/`、`data/`、`.venv/`、`credentials.dpapi` 均**不在**仓库（.gitignore 生效）。
+
+已知缺口：`data/` 被忽略，新克隆没有 `customer_churn.csv`（另 3 个 sklearn 数据集会自动重建）；要完全可复现需单独下载 OpenML 40701 或把 `data/catalog/*.csv` 加入白名单。
