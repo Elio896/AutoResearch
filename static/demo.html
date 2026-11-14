@@ -132,16 +132,31 @@
     </div>
   </div>
 
-  <!-- 当前文件的处理过程 -->
+  <!-- 当前文件的处理过程：千问只给分析依据，不给思维链 -->
   <section class="card hidden" id="analysis">
-    <h2>① 千问的判断</h2>
+    <h2>① 分析依据 <span class="hint" style="font-size:12px;font-weight:400;
+         text-transform:none;letter-spacing:0">· 它的输出，不是它的思维过程</span></h2>
     <div class="think">
-      <div class="who" id="think-who">Tongyi Qianwen <span id="think-src"></span></div>
+      <div class="who" id="think-who">Tongyi Qianwen<span id="think-src"></span></div>
       <div id="think-body"></div>
     </div>
     <div id="think-split" class="hidden" style="margin-top:16px;display:grid;
          grid-template-columns:1fr 1fr;gap:14px"></div>
+
+    <!-- 它自己点菜、代码真跑、真数字回来 -->
+    <div id="op-plan" class="hidden" style="margin-top:16px"></div>
+    <div id="op-evidence" class="hidden" style="margin-top:10px;display:flex;flex-direction:column;gap:10px"></div>
+    <div id="op-reading" class="hidden" style="margin-top:14px"></div>
+
     <div class="why" id="think-why" style="margin-top:14px"></div>
+  </section>
+
+  <!-- 千问做不了的那部分：研究假设 / 复杂诊断，归 DeepSeek -->
+  <section class="card hidden" id="research-hyp">
+    <h2>① b 研究假设 · DeepSeek <span class="hint" style="font-size:12px;font-weight:400;
+         text-transform:none;letter-spacing:0">· 复杂诊断，不归千问</span></h2>
+    <div class="why" id="hyp-status"></div>
+    <div id="hyp-list" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
   </section>
 
   <section class="card hidden" id="approval">
@@ -266,6 +281,94 @@
 <script>
 const $ = (id) => document.getElementById(id);
 
+// 模型原文一律转义后显示：它吐什么就显示什么，但不当成 HTML 执行
+const escapeHtml = (value) => String(value === undefined || value === null ? '' : value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+// 后端有些条目自带 **强调** 标记，转义之后再把它变成粗体（不执行任何外来标签）
+const richText = (value) => escapeHtml(value).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+// 研究假设/复杂诊断归 DeepSeek：这里只列「要问它什么」，它没答过就不假装答过
+function renderResearchHypotheses(research) {
+  const list = (research && research.questions) || [];
+  if (!list.length) { hidePanel('research-hyp'); return; }
+  $('hyp-status').innerHTML =
+    `<b>${escapeHtml(research.status_text || '未调用')}</b> · ${escapeHtml(research.reason || '')}`;
+  $('hyp-list').innerHTML = list.map((q) => `
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px">
+      <div class="hint" style="font-size:12px;margin-bottom:4px">
+        ${escapeHtml(q.kind || '')}${q.evidence ? ' · ' + escapeHtml(q.evidence) : ''}</div>
+      <div style="font-size:13px">${escapeHtml(q.question || '')}</div>
+    </div>`).join('');
+  showPanel('research-hyp');
+}
+
+// 它点菜 -> 代码真跑 -> 它读真数字。算术全在代码里，模型只负责选和读。
+function renderQwenEvidence(plan, ops, reading) {
+  const list = ops || [];
+  const planEl = $('op-plan'), evEl = $('op-evidence'), rdEl = $('op-reading');
+
+  if (!plan || !list.length) {
+    planEl.classList.add('hidden');
+    evEl.classList.add('hidden');
+    rdEl.classList.add('hidden');
+    return;
+  }
+
+  planEl.classList.remove('hidden');
+  planEl.innerHTML = `
+    <div style="font-size:13px">
+      <b>它要求看的：</b>${(plan.ops || []).map((op) =>
+        `<code style="background:var(--bg);border:1px solid var(--line);border-radius:6px;
+               padding:1px 6px;margin-right:6px;font-size:12px">${escapeHtml(op)}</code>`).join('')}
+      <span class="hint" style="margin-left:6px">（${plan.source === 'model' ? '它自己选的' : '默认清单'}）</span>
+    </div>
+    ${plan.why ? `<div class="hint" style="font-size:12px;margin-top:6px">${escapeHtml(plan.why)}</div>` : ''}
+    <div class="hint" style="font-size:12px;margin-top:6px">
+      下面每个数字都是代码在这份数据上真跑出来的，模型没有参与算术。</div>`;
+
+  evEl.classList.remove('hidden');
+  evEl.innerHTML = list.map((item) => {
+    const table = item.table || { columns: [], rows: [] };
+    const head = (table.columns || []).map((c) =>
+      `<th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);
+            font-weight:600;font-size:12px">${escapeHtml(c)}</th>`).join('');
+    const body = (table.rows || []).map((row) =>
+      `<tr>${row.map((cell) =>
+        `<td style="padding:5px 8px;border-bottom:1px solid var(--line);font-size:12px">${escapeHtml(cell)}</td>`).join('')}</tr>`).join('');
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px">${escapeHtml(item.title || item.op)}</div>
+      ${item.error ? `<div class="hint" style="color:#b91c1c;font-size:12px">${escapeHtml(item.error)}</div>` : ''}
+      ${(table.columns || []).length ? `<table style="width:100%;border-collapse:collapse">
+        ${head ? `<thead><tr>${head}</tr></thead>` : ''}<tbody>${body}</tbody></table>` : ''}
+    </div>`;
+  }).join('');
+
+  if (reading && (reading.raw || reading.error)) {
+    rdEl.classList.remove('hidden');
+    const badge = reading.format_ok === false
+      ? ' · <span style="color:#b91c1c">格式未通过校验（它仍然用了 JSON 壳）</span>' : '';
+    const unwrapped = reading.unwrapped
+      ? `<div class="hint" style="font-size:12px;margin-bottom:4px">
+           拆壳后（把它自己 JSON 里的字符串按原顺序摊开，一个字没加）</div>
+         <div style="font-size:13px;margin-bottom:10px">${escapeHtml(reading.unwrapped)}</div>`
+      : (reading.format_ok === false
+        ? `<div class="hint" style="font-size:12px;margin-bottom:10px;color:#b45309">
+             壳里是空的（原文只有 {} 或没有可摊开的字符串），这次它没读出东西。</div>`
+        : '');
+    rdEl.innerHTML = `
+      <div class="hint" style="font-size:12px;margin-bottom:4px">它自己的读法${badge}</div>
+      ${unwrapped}
+      <div class="hint" style="font-size:12px;margin-bottom:4px">模型原文（未改写）</div>
+      <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:13px;
+           background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px">${escapeHtml(reading.raw || reading.error)}</pre>`;
+  } else {
+    rdEl.classList.add('hidden');
+  }
+}
+
+
 // ---------- 队列 ----------
 const queue = [];          // {name, csv, state, result}
 let current = null;        // 当前正在处理的项
@@ -353,10 +456,46 @@ async function analyzeItem(item) {
   item.sessionId = data.session_id;
   item.suggested = data.suggested;
   const thought = data.thought || {};
-  $('think-src').textContent = thought.source === 'local_model' ? '· 本地模型' : '· 规则判断';
-  $('think-body').innerHTML = (thought.observations || [])
-    .map((line) => `<p style="margin:0 0 6px">${line}</p>`).join('')
-    || `<p>${thought.text || ''}</p>`;
+  const attribution = thought.attribution || (thought.source === 'local_model' ? 'model' : 'program');
+
+  // 署名只写「来源」，不替模型认领它没说过的话
+  $('think-who').innerHTML = (attribution === 'model' ? 'Tongyi Qianwen' : '程序规则')
+    + '<span id="think-src"></span>';
+  $('think-src').textContent = attribution === 'model'
+    ? ` · 模型原文${thought.model ? '（' + thought.model + '）' : ''}`
+    : ' · 非模型输出';
+
+  const notes = [];
+  if (attribution === 'program') {
+    notes.push(`<div class="why" style="border-left:3px solid #b45309;margin-bottom:10px;font-size:12px">
+      这是<b>程序规则</b>按行数/缺失/类别比例套模板拼出来的，<b>不是模型在思考</b>。
+      本地千问没起、或没勾「调本地千问」时就是这个状态。</div>`);
+  }
+  if (attribution === 'model' && thought.format_ok === false) {
+    notes.push(`<div class="why" style="border-left:3px solid #b91c1c;color:#b91c1c;margin-bottom:10px;font-size:12px">
+      格式未通过校验：模型没按「${escapeHtml(thought.format_expectation || '三句话')}」回答。
+      下面照原样显示，没有替它加工。</div>`);
+  }
+
+  const rawBlock = (attribution === 'model' && thought.raw)
+    ? `<div style="margin-bottom:12px">
+         <div class="hint" style="font-size:12px;margin-bottom:4px">模型原文（未改写）</div>
+         <pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:13px;
+              background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px">${escapeHtml(thought.raw)}</pre>
+       </div>`
+    : '';
+
+  const observations = thought.observations || [];
+  const obsBlock = observations.length
+    ? `<div>
+         <div class="hint" style="font-size:12px;margin-bottom:4px">
+           ${attribution === 'model' ? '程序统计（从训练集算出来的数字）' : '程序统计（模板生成）'}</div>
+         ${observations.map((line) => `<p style="margin:0 0 6px;font-size:13px">${richText(line)}</p>`).join('')}
+       </div>`
+    : '';
+
+  $('think-body').innerHTML = notes.join('') + rawBlock + obsBlock
+    || '<p class="hint">这次没有可展示的输出。</p>';
 
   // 把活拆成两堆：我做得动的 / 我做不了的
   const canDo = thought.can_do || [];
@@ -367,19 +506,27 @@ async function analyzeItem(item) {
         <div style="font-weight:700;color:var(--good);margin-bottom:8px">
           我能做的（数据处理活）</div>
         <ul style="margin:0;padding-left:18px;font-size:13px">
-          ${canDo.map((x) => `<li style="margin-bottom:4px">${x}</li>`).join('')}
+          ${canDo.map((x) => `<li style="margin-bottom:4px">${richText(x)}</li>`).join('')}
         </ul>
       </div>
       <div style="border:1px solid #f0c060;background:#fffbeb;border-radius:12px;padding:14px">
         <div style="font-weight:700;color:#b45309;margin-bottom:8px">
           我做不了的（要交给大模型）</div>
         <ul style="margin:0;padding-left:18px;font-size:13px">
-          ${cannotDo.map((x) => `<li style="margin-bottom:4px">${x}</li>`).join('')}
+          ${cannotDo.map((x) => `<li style="margin-bottom:4px">${richText(x)}</li>`).join('')}
         </ul>
       </div>`;
     $('think-split').classList.remove('hidden');
+  } else {
+    $('think-split').classList.add('hidden');
   }
-  $('think-why').innerHTML = `它建议：<b>${data.suggested.why}</b>`;
+
+  // 建议是程序按规则给的，不能写在「它」名下
+  $('think-why').innerHTML = `建议（<b>程序规则</b>，不是模型选的）：<b>${escapeHtml(data.suggested.why)}</b>`;
+
+  renderResearchHypotheses(data.research);
+  renderQwenEvidence(data.plan, data.evidence_ops, data.reading);
+
   showPanel('approval');
   $('f-metric').value = data.suggested.metric;
   $('f-model').value = data.suggested.baseline_model;
@@ -926,6 +1073,69 @@ $('key-save').addEventListener('click', () => {
 
 renderQueue();
 drawChart([], null);
+
+// ?autodemo=1 自动走一遍（给无头浏览器截图用，不用手点）
+(function autodemo() {
+  if (!new URLSearchParams(location.search).has('autodemo')) return;
+  const head = 'f1,f2,f3,f4,f5,f6,species';
+  const proto = [
+    '0.1,0.2,-0.3,1.1,-0.9,0.4,A',
+    '1.9,1.2,-0.4,0.1,1.1,-0.8,B',
+    '-1.4,2.1,1.2,-0.9,0.1,1.3,C',
+    '0.3,-0.1,0.2,0.8,-1.2,0.6,A',
+    '2.2,0.8,-0.7,-0.2,0.9,-1.1,B',
+    '-1.7,1.8,0.9,-1.1,0.2,1.1,C',
+  ];
+  const rows = [head];
+  for (let i = 0; i < 90; i++) rows.push(proto[i % proto.length]);
+  const csv = rows.join('\n');
+
+  setTimeout(async () => {
+    try {
+      const analyzed = await post('/demo/analyze', {
+        csv_text: csv, target: 'species', metric: 'f1_macro', pos_label: 'A',
+      });
+      sessionId = analyzed.session_id;
+      const thought = analyzed.thought || {};
+      $('think-body').innerHTML = (thought.observations || [])
+        .map((l) => `<p style="margin:0 0 6px">${l}</p>`).join('');
+      if (thought.can_do || thought.cannot_do) {
+        $('think-split').innerHTML = `
+          <div style="border:1px solid #b6e0c2;background:#f2fbf4;border-radius:12px;padding:14px">
+            <div style="font-weight:700;color:var(--good);margin-bottom:8px">我能做的（数据处理活）</div>
+            <ul style="margin:0;padding-left:18px;font-size:13px">
+              ${(thought.can_do || []).map((x) => `<li>${x}</li>`).join('')}</ul></div>
+          <div style="border:1px solid #f0c060;background:#fffbeb;border-radius:12px;padding:14px">
+            <div style="font-weight:700;color:#b45309;margin-bottom:8px">我做不了的（要交给大模型）</div>
+            <ul style="margin:0;padding-left:18px;font-size:13px">
+              ${(thought.cannot_do || []).map((x) => `<li>${x.replace(/\*\*/g, '')}</li>`).join('')}</ul></div>`;
+        $('think-split').classList.remove('hidden');
+      }
+      $('think-src').textContent = thought.source === 'local_model' ? '· 本地模型' : '· 规则判断';
+      showPanel('analysis');
+      showPanel('approval');
+      $('mode-hint').textContent = '自动演示中…';
+
+      await post('/demo/approve', {
+        session_id: sessionId,
+        overrides: {metric: 'f1_macro', baseline_model: 'logistic_regression',
+                    max_experiments: 6},
+      });
+      for (let i = 0; i < 3; i++) {
+        const data = await post('/demo/step', {session_id: sessionId});
+        applyProgress(data);
+      }
+      showPanel('result');
+      $('mode-hint').textContent = '自动演示完成（3 代）';
+    } catch (error) {
+      console.error('autodemo failed', error);
+      const box = document.createElement('div');
+      box.style.cssText = 'color:#b91c1c;padding:12px;font-size:14px;background:#fef2f2';
+      box.textContent = '自动演示失败：' + error.message;
+      document.body.prepend(box);
+    }
+  }, 300);
+})();
 </script>
 </body>
 </html>

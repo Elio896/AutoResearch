@@ -13,8 +13,30 @@ from mde import compare, required_seeds, t_critical
 
 class MCETests(unittest.TestCase):
     def test_t_critical_matches_table(self):
-        self.assertAlmostEqual(t_critical(4), 2.132, places=3)   # S=5
-        self.assertAlmostEqual(t_critical(2), 2.920, places=3)   # S=3
+        """单侧和双侧是两张表，别再混用。
+
+        猫 2026-11-14 指出：同时判升和降两个方向时用单侧临界值，
+        合计误判率约 10%，不是 5%。所以默认走双侧。
+        """
+        self.assertAlmostEqual(t_critical(4, two_sided=True), 2.776, places=3)   # S=5
+        self.assertAlmostEqual(t_critical(4, two_sided=False), 2.132, places=3)  # S=5
+        self.assertAlmostEqual(t_critical(2, two_sided=True), 4.303, places=3)   # S=3
+        self.assertAlmostEqual(t_critical(2, two_sided=False), 2.920, places=3)  # S=3
+
+    def test_two_sided_is_stricter(self):
+        """双侧比单侧更严——这是改它的原因。"""
+        for dof in (2, 4, 9):
+            self.assertGreater(t_critical(dof, two_sided=True),
+                               t_critical(dof, two_sided=False))
+
+    def test_same_data_more_conservative_under_two_sided(self):
+        """同一组数据，双侧判 flat 的，单侧可能判 improved。"""
+        cand = [0.951, 0.948, 0.955, 0.949, 0.952]
+        base = [0.949, 0.947, 0.953, 0.948, 0.951]
+        one = compare(cand, base, two_sided=False)
+        two = compare(cand, base, two_sided=True)
+        self.assertGreater(two['mde'], one['mde'])
+        self.assertTrue(two['two_sided'])
 
     def test_consistent_small_gain_is_improved(self):
         """每个种子都略好一点——差值稳定，算真提升。"""

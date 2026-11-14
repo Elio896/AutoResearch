@@ -24,26 +24,42 @@ from __future__ import annotations
 
 import math
 
-# t 分布 95% 单侧临界值（自由度 = S-1）
-T_CRITICAL = {1: 6.314, 2: 2.920, 3: 2.353, 4: 2.132, 5: 2.015,
-              6: 1.943, 7: 1.895, 8: 1.860, 9: 1.833, 10: 1.812,
-              11: 1.796, 12: 1.782, 13: 1.771, 14: 1.761, 15: 1.753,
-              20: 1.725, 30: 1.697, 50: 1.676, 100: 1.660}
+# t 分布临界值
+# 单侧 95%：用于「只关心一个方向」的判断
+T_CRITICAL_ONE_SIDED = {1: 6.314, 2: 2.920, 3: 2.353, 4: 2.132, 5: 2.015,
+                        6: 1.943, 7: 1.895, 8: 1.860, 9: 1.833, 10: 1.812,
+                        11: 1.796, 12: 1.782, 13: 1.771, 14: 1.761, 15: 1.753,
+                        20: 1.725, 30: 1.697, 50: 1.676, 100: 1.660}
+
+# 双侧 95%（等价单侧 97.5%）：同时判「升」和「降」时必须用这个，
+# 否则两个方向各用 95%，合起来的误判率约 10%，不是 5%。
+# 猫（章鱼猫猫头）2026-11-14 指出这一点，是对的。
+T_CRITICAL_TWO_SIDED = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+                        6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+                        11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+                        20: 2.086, 30: 2.042, 50: 2.009, 100: 1.984}
+
+# 兼容旧名字：默认仍取单侧表，但实际判定走 two_sided=True 的双侧表
+T_CRITICAL = T_CRITICAL_ONE_SIDED
 
 DEFAULT_SEEDS = 5
 
 
-def t_critical(dof: int) -> float:
-    """取 95% 单侧 t 临界值；表里没有就用最近的下界，绝不返回比实际更小的。"""
+def t_critical(dof: int, two_sided: bool = True) -> float:
+    """取 95% 临界值；表里没有就用最近的下界，绝不返回比实际更小的。
+
+    two_sided=True 默认——因为我们同时判 improved 和 regressed 两个方向。
+    """
     if dof <= 0:
         return float('inf')
-    if dof in T_CRITICAL:
-        return T_CRITICAL[dof]
-    keys = sorted(T_CRITICAL)
+    table = T_CRITICAL_TWO_SIDED if two_sided else T_CRITICAL_ONE_SIDED
+    if dof in table:
+        return table[dof]
+    keys = sorted(table)
     for key in keys:
         if key >= dof:
-            return T_CRITICAL[key]
-    return T_CRITICAL[keys[-1]]
+            return table[key]
+    return table[keys[-1]]
 
 
 def mean(values: list[float]) -> float:
@@ -60,10 +76,13 @@ def sample_std(values: list[float]) -> float:
 
 
 def compare(candidate_scores: list[float], best_scores: list[float],
-            min_effect: float = 0.0) -> dict:
+            min_effect: float = 0.0, two_sided: bool = True) -> dict:
     """成对比较两组同种子分数，返回判定和全部中间量。
 
     candidate_scores / best_scores 必须**一一对应**（同一个种子跑出来的）。
+
+    two_sided=True（默认）：因为同时判 improved 和 regressed 两个方向，
+    必须用双侧临界值，否则合计误判率约 10%。
     """
     if len(candidate_scores) != len(best_scores):
         raise ValueError('成对比较需要同样数量的种子分数')
@@ -75,7 +94,8 @@ def compare(candidate_scores: list[float], best_scores: list[float],
     mean_d = mean(deltas)
     std_d = sample_std(deltas)
     se = std_d / math.sqrt(n) if n > 0 else 0.0
-    mde = t_critical(n - 1) * se if n > 1 else float('inf')
+    t_val = t_critical(n - 1, two_sided=two_sided) if n > 1 else float('inf')
+    mde = t_val * se if n > 1 else float('inf')
 
     # 只有 1 个种子时无法估计噪声，直接按"不显著"处理，不许假装能判
     if n <= 1:
@@ -117,8 +137,9 @@ def compare(candidate_scores: list[float], best_scores: list[float],
         'best_per_seed': [round(v, 6) for v in best_scores],
         'deltas': [round(d, 6) for d in deltas],
         'seeds': n,
-        't_critical': t_critical(n - 1),
-        'note': (f'{n} 个种子，成对差值的 95% 单侧区间 = '
+        't_critical': t_val,
+        'two_sided': two_sided,
+        'note': (f'{n} 个种子，成对差值的 95% {"双侧" if two_sided else "单侧"}区间 = '
                  f'{mean_d:+.4f} ± {mde:.4f}'),
     }
 

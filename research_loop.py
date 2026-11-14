@@ -127,7 +127,8 @@ class ResearchLoop:
                  trajectory_dir: str | Path | None = None, run_id: str | None = None,
                  small_proposer=None, cloud_proposer=None, jev_gate=None,
                  max_cloud_calls: int = 0, qwen_router=None, jev_harness=None,
-                 use_signal_router: bool = False, use_task_router: bool = False):
+                 use_signal_router: bool = False, use_task_router: bool = False,
+                 use_mde: bool = False):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -158,6 +159,8 @@ class ResearchLoop:
         self.use_signal_router = use_signal_router
         # 任务判别器：千问能不能接这活？接不了就分给 JEV（决策）/ DeepSeek（思考）
         self.task_router = use_task_router
+        # MDE 复核：判 improved 后用多种子确认不是噪声（默认关，开了慢 5 倍）
+        self.use_mde = use_mde
         self._recent_rejections: list[str] = []
         self._last_gain = None
         self.blueteam = BlueTeam()
@@ -185,6 +188,52 @@ class ResearchLoop:
             self.used[key] = self.used.get(key, 0) + value
 
     # ---------- 主流程 ----------
+    def _verify_with_mde(self, candidate: dict, best: dict) -> dict | None:
+        """用多种子成对比较复核「改进」。不显著就返回改判后的 verdict。
+
+        成本：候选和最优各跑 S 次（默认 5），共 2S 次 fit。
+        只对**已经判 improved 的候选**做，所以不会每轮都付这个代价。
+        """
+        from mde import compare
+
+        try:
+            seeds = getattr(self, 'mde_seeds', (42, 7, 2026, 1, 13))
+            cand_multi = self.session.run_multi_seed(
+                candidate.get('model'), candidate.get('parameters') or {}, seeds=seeds)
+            best_multi = self.session.run_multi_seed(
+                best.get('model'), best.get('parameters') or {}, seeds=seeds)
+        except Exception as exc:                # noqa: BLE001
+            self._record('mde_verify_failed', reason=str(exc)[:160])
+            return None
+
+        comparison = compare(cand_multi['per_seed'], best_multi['per_seed'])
+        self._record('mde_verification', **{
+            'candidate': candidate.get('model'),
+            'best': best.get('model'),
+            **{k: comparison[k] for k in
+               ('verdict', 'delta_vs_best', 'mde', 'delta_significant',
+                'per_seed', 'best_per_seed', 'seeds', 'two_sided')},
+        })
+
+        if comparison['verdict'] == 'improved':
+            return None                          # 复核通过，沿用原判定
+
+        # 复核不过：改判 flat（不是 regressed——它可能真的略好，只是不够稳）
+        return {
+            'verdict': 'flat',
+            'delta': comparison['delta_vs_best'],
+            'candidate_score': candidate.get('validation_score',
+                                             candidate.get('validation_f1')),
+            'best_score': best.get('validation_score', best.get('validation_f1')),
+            'reverted': False,
+            'gates': [],
+            'redlines': [],
+            'mde_overridden': True,
+            'mde': comparison['mde'],
+            'why': (f"单次看是提升，但 {comparison['seeds']} 个种子成对比较后不显著"
+                    f"（差 {comparison['delta_vs_best']:+.4f}，阈值 {comparison['mde']:.4f}）"),
+        }
+
     def run(self) -> dict:
         started = time.monotonic()
 
@@ -311,6 +360,13 @@ class ResearchLoop:
 
             # Reviewer
             verdict = self.reviewer.judge(result, best, profile)
+            # MDE 复核：Reviewer 只看单次分数，可能把噪声当成提升。
+            # 判 improved 之后再用多种子复核一次，不显著就改判 flat。
+            # （猫 2026-11-14 指出：MDE 之前只是独立模块，没接入主循环。）
+            if self.use_mde and best is not None and verdict['verdict'] == 'improved':
+                verified = self._verify_with_mde(result, best)
+                if verified is not None:
+                    verdict = verified
             self._record('reviewer_verdict', verdict=verdict,
                          budget=self.budget.snapshot(self.used),
                          tokens=self.scientist.last_tokens.copy())
