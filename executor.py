@@ -6,6 +6,26 @@ import time
 from pathlib import Path
 
 
+INT_PARAMETERS = {
+    'n_estimators', 'max_depth', 'min_samples_split', 'min_samples_leaf', 'max_iter',
+    'n_jobs', 'random_state', 'max_leaf_nodes', 'min_samples_leaf', 'max_features_int'}
+
+
+def coerce_integer_parameters(model, parameters):
+    """Small models write 100.0 where sklearn needs 100; fix that, keep a record.
+
+    Only parameters known to be integers are touched, and only when the value has no
+    fractional part. Everything else is left alone so genuine errors still surface.
+    """
+    fixed = {}
+    for key, value in dict(parameters or {}).items():
+        if key in INT_PARAMETERS and isinstance(value, float) and value.is_integer():
+            fixed[key] = int(value)
+        else:
+            fixed[key] = value
+    return fixed
+
+
 class ResearchSession:
     """One dataset, fixed splits, validation-only iteration, one final test.
 
@@ -142,6 +162,7 @@ class ResearchSession:
             raise RuntimeError('Feature risk review required before training: ' +
                                ', '.join(self.risk_report['unresolved_columns']))
 
+
     def run(self, model='logistic_regression', parameters=None, preprocessing=None):
         from sklearn.compose import ColumnTransformer
         from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
@@ -154,7 +175,7 @@ class ResearchSession:
         if self.closed:
             raise RuntimeError('Session finalized; further tuning is forbidden.')
         self.ensure_ready()
-        parameters = dict(parameters or {})
+        parameters = coerce_integer_parameters(model, parameters)
         # 预处理开关：二德子 2026-11-14 指出只调模型天花板很低，
         # 表格任务的收益大半在数据这一侧（她们实测 readmission 加 isna 指示
         # 变量后正例 F1 从 0.165 到 0.443）。这里只放可信的四个开关。

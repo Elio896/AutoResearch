@@ -89,8 +89,8 @@ def collect_dataset(goal,gateway,catalog=None,emit=None):
             gaps=[scope_gap(goal,catalog.schema(r['id']),r) for r in direct]
             if all(gaps):
                 raise DataSourceError('dataset_scope',gaps[0]+' 当前可用数据集：'+available+'。',needs_input=True)
-    from research_context import is_followup
-    if records and not direct and is_followup(goal):
+    from research_context import references_previous
+    if records and not direct and references_previous(goal):
         raise DataSourceError('dataset_search','这句话像是对上一轮结果的追问，但本次没有关联上一轮任务。请打开原任务继续提问，或说明要用哪个数据集。当前可用数据集：'+available+'；也可上传 CSV。',needs_input=True)
     catalog_context=[{**{k:r.get(k) for k in ('id','name','aliases','target')},
                      'fields':catalog.schema(r['id'])[:50] if hasattr(catalog,'schema') else []} for r in records]

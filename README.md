@@ -1,3 +1,9 @@
+> Website now defaults to token-saving mode. Real measured results and quality limits: [token-economy.md](docs/token-economy.md).
+
+# V23 current entry
+
+Start Start-Local-Research.cmd and open http://127.0.0.1:8018/. Current scope, bounded research rounds, evaluation and reproduction: [competition-v23.md](docs/competition-v23.md). Older sections below describe historical versions and are not the current acceptance status.
+
 # EvoResearch
 
 **当前主线：机器学习 API 工作站链路。** 自然语言/CSV → 来源模型（公开数据搜索、获取与规划）→ Jev 分类派发 → 低成本/高成本工作站 → 高性能模型审核整合。双击 `双击打开机器学习.cmd` 打开新入口。配置、边界与验收见 `docs/ml-pipeline.md`。下方历史演示和旧验证记录不代表当前默认应用的功能清单。

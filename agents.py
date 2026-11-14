@@ -146,7 +146,7 @@ class Scientist:
     约束：输出必须是 {model, parameters}，参数范围由 allowed 卡死。
     """
 
-    def __init__(self, proposer, allowed: dict, max_output_tokens: int = 200):
+    def __init__(self, proposer, allowed: dict, max_output_tokens: int = 400):
         self.proposer = proposer
         self.allowed = allowed
         self.max_output_tokens = max_output_tokens
@@ -174,7 +174,7 @@ class Scientist:
              'expected_direction (up/down/flat), falsifier (what result would prove you wrong), '
              'confidence_before (a NUMBER from 0 to 1 - how sure you are THIS experiment beats the '
              'current best; 0.9 = very sure, 0.5 = coin flip, 0.2 = wild guess. Never null, never a word). '
-             'No explanation outside JSON. No test evaluation. Never repeat an experiment.'},
+             'No explanation outside JSON. No test evaluation. Never repeat an experiment. Integer parameters must be written as integers (100, not 100.0).'},
             {'role': 'user', 'content':
              f'Allowed: {self._allowed_text()}\n'
              f'Data profile: {json.dumps(profile)}\n'

@@ -124,7 +124,8 @@ def run_comparison(path,body,csv,target,client_factory,provenance,price_feed=Non
                     progress(seed=seed,mode=mode,event=event['event'],completed_arms=len(rows),total_arms=len(body.seeds)*2)
                 engine=MLResearch(session,clients,max_calls=body.max_calls,max_tokens=body.max_tokens,
                     max_seconds=body.max_seconds,max_fits=body.max_fits,
-                    max_expert_calls=body.max_fits,deliverer=deliver,execution_mode=mode,emit=emit,price_feed=price_feed)
+                    max_expert_calls=body.max_fits,deliverer=deliver,execution_mode=mode,emit=emit,price_feed=price_feed,
+                    max_rounds=getattr(body,'max_rounds',1),patience=getattr(body,'patience',2),economy=getattr(body,'economy',False) and mode=='routed')
                 report=engine.run(body.goal,False)
                 report['model_roles']={k:getattr(v,'model','configured') for k,v in clients.items()}
                 metrics=summarize(report,session,time.monotonic()-start)
@@ -136,8 +137,8 @@ def run_comparison(path,body,csv,target,client_factory,provenance,price_feed=Non
             row={'seed':seed,'mode':mode,'metrics':metrics}
             rows.append(row);save(arm/'metrics.json',row)
     result={'comparison_id':path.name,'goal':body.goal,'provenance':provenance,
-        'protocol':{'seeds':body.seeds,'memory':'disabled_for_both','test_access':False,
-                    'dataset_sha256':hashlib.sha256(csv.encode()).hexdigest(),'target':target,'per_arm_limits':{'max_calls':body.max_calls,'max_tokens':body.max_tokens,'max_seconds':body.max_seconds,'max_fits':body.max_fits}},
+        'protocol':{'seeds':body.seeds,'economy_routed':getattr(body,'economy',False),'memory':'disabled_for_both','test_access':False,
+                    'dataset_sha256':hashlib.sha256(csv.encode()).hexdigest(),'target':target,'per_arm_limits':{'max_calls':body.max_calls,'max_tokens':body.max_tokens,'max_seconds':body.max_seconds,'max_fits':body.max_fits,'max_rounds':getattr(body,'max_rounds',1),'patience':getattr(body,'patience',2)}},
         'arms':rows,'aggregate':aggregate(rows),'total_wall_seconds':time.monotonic()-began}
     save(path/'report.json',result)
     save(path/'state.json',{'comparison_id':path.name,'status':'completed','completed_arms':len(rows),'total_arms':len(rows)})

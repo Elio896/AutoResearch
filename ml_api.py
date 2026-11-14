@@ -1,19 +1,29 @@
 """The reduced product surface: tabular ML, API routing and evidence."""
+import sys
+import time
 import json
 import threading
 import uuid
 from pathlib import Path
 import hashlib
+from app_version import APP_VERSION
 
 def source_fingerprint():
     base=Path(__file__).parent
-    files=['ml_api.py','ml_engine.py','light_model.py','model_budget.py','failure_recovery.py','billing_actual.py','answer_evidence.py','research_context.py','comparison_benchmark.py','static/ml-app.js','static/ml-app.html','static/pixel-theme.css']
-    return hashlib.sha256(b''.join((base/f).read_bytes() for f in files)).hexdigest()
+    files=['app_version.py','ml_api.py','ml_engine.py','light_model.py','model_budget.py','failure_recovery.py','billing_actual.py','answer_evidence.py','research_context.py','comparison_benchmark.py','data_source.py','local_catalog.py','association_analysis.py','research_deliverables.py','strategy_store.py','experiment_lessons.py']
+    return hashlib.sha256(b''.join(f.encode()+b'\0'+(base/f).read_bytes()+b'\0' for f in files)).hexdigest()
 
 LOADED_SOURCE_FINGERPRINT=source_fingerprint()
 
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
+def asset_fingerprint():
+    """Static files are served live, so their edits do not require a restart."""
+    base=Path(__file__).parent
+    files=['static/ml-app.js','static/ml-app.html','static/ml-app.css','static/pixel-theme.css']
+    return hashlib.sha256(b''.join(f.encode()+b'\0'+(base/f).read_bytes()+b'\0' for f in files)).hexdigest()
+
+
+from fastapi import Body,  FastAPI, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -33,8 +43,9 @@ from data_source import collect_dataset, DataSourceError
 from local_catalog import LocalCatalog
 from research_system import save, read_saved_state
 from comparison_benchmark import run_comparison
+from capability_memory import CapabilityMemory
 from research_context import (ANSWER_RULES, answer_contract, evidence_summary,
-    is_followup, requires_experiment, scope_gap, target_from_question, present_answer)
+    is_followup, requires_experiment, training_forbidden, needs_new_analysis, needs_prediction_execution, scope_gap, target_from_question, research_target, present_answer)
 
 
 class MLInput(BaseModel):
@@ -49,6 +60,12 @@ class MLInput(BaseModel):
     max_expert_calls:int=Field(default=1,ge=0,le=3,strict=True)
     evaluate_test:bool=False
     previous_run_id:str|None=Field(default=None,pattern=r'^[a-f0-9]{32}$')
+    max_rounds:int=Field(default=1,ge=1,le=8,strict=True)
+    patience:int=Field(default=2,ge=1,le=5,strict=True)
+    seed:int=Field(default=42,ge=0,le=2147483647,strict=True)
+    use_memory:bool=True
+    economy:bool=False
+    memory_namespace:str|None=Field(default=None,pattern=r'^[a-f0-9]{32}$')
 
 
 class ComparisonInput(BaseModel):
@@ -62,6 +79,9 @@ class ComparisonInput(BaseModel):
     max_tokens:int=Field(default=60000,ge=4000,le=200000,strict=True)
     max_seconds:int=Field(default=180,ge=10,le=600,strict=True)
     max_fits:int=Field(default=3,ge=2,le=10,strict=True)
+    max_rounds:int=Field(default=1,ge=1,le=8,strict=True)
+    patience:int=Field(default=2,ge=1,le=5,strict=True)
+    economy:bool=True
 
 
 def create_app(data_directory=None,client_factory=None,catalog_factory=None):
@@ -104,15 +124,66 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
     async def no_cache(request,call_next):
         response=await call_next(request)
         response.headers['Cache-Control']='no-store'
-        response.headers['X-EvoResearch-Version']='ml-chain-22'
+        response.headers['X-EvoResearch-Version']=APP_VERSION
         return response
 
+
+    # --- evolution demo (local-only, zero API cost) ---
+    import subprocess as _sp
+    _evo = {'proc': None, 'state': 'idle', 'started': None, 'log': ''}
+
+    def _evo_script():
+        return Path(__file__).parent / 'artifacts' / 'acceptance-20261114' / 'evolution_demo.py'
+
+    def _evo_python():
+        return sys.executable
+
+    @app.get('/ml/evolution/status')
+    def evolution_status():
+        proc = _evo['proc']
+        if proc is not None and proc.poll() is not None:
+            _evo['state'] = 'done' if proc.returncode == 0 else 'failed'
+            _evo['proc'] = None
+        elapsed = ''
+        if _evo['state'] == 'running' and _evo['started']:
+            elapsed = '%ds' % int(time.time() - _evo['started'])
+        return {'state': _evo['state'], 'elapsed_hint': elapsed,
+                'log_tail': (_evo['log'] or '')[-400:]}
+
+    @app.post('/ml/evolution/run')
+    def evolution_run(body: dict = Body(default={})):
+        if _evo['proc'] is not None and _evo['proc'].poll() is None:
+            raise HTTPException(409, 'A demo is already running.')
+        mode = (body or {}).get('mode', 'faulty')
+        if mode not in ('faulty', 'clean'):
+            raise HTTPException(422, 'mode must be faulty or clean.')
+        args = [_evo_python(), str(_evo_script()), '--reset']
+        if mode == 'faulty':
+            args.append('--faulty')
+        log_path = root / 'evolution-demo.log'
+        with open(log_path, 'w', encoding='utf-8') as handle:
+            _evo['proc'] = _sp.Popen(args, cwd=str(Path(__file__).parent), stdout=handle,
+                                     stderr=_sp.STDOUT, text=True)
+        _evo['state'] = 'running'
+        _evo['started'] = time.time()
+        _evo['log'] = str(log_path)
+        return {'state': 'running', 'mode': mode}
+
+    @app.post('/ml/evolution/rollback')
+    def evolution_rollback():
+        script = Path(__file__).parent / 'artifacts' / 'acceptance-20261114' / 'rollback_capability.py'
+        out = _sp.run([_evo_python(), str(script), '--latest'], capture_output=True, text=True,
+                      cwd=str(Path(__file__).parent))
+        if out.returncode != 0:
+            raise HTTPException(400, (out.stderr or out.stdout or 'rollback failed')[:200])
+        return {'restored': (out.stdout or '').strip()[-160:]}
+
     @app.get('/ml/version')
-    def version(): return {'version':'ml-chain-22','restart_required':source_fingerprint()!=LOADED_SOURCE_FINGERPRINT,'source_fingerprint':LOADED_SOURCE_FINGERPRINT,'auto_evolution_enabled':False,'data_source':'local_catalog','catalog_count':len(LocalCatalog().records())}
+    def version(): return {'version':APP_VERSION,'restart_required':source_fingerprint()!=LOADED_SOURCE_FINGERPRINT,'source_fingerprint':LOADED_SOURCE_FINGERPRINT,'asset_fingerprint':asset_fingerprint(),'auto_evolution_enabled':False,'data_source':'local_catalog','catalog_count':len(LocalCatalog().records())}
 
     @app.get('/static/{asset}',include_in_schema=False)
     def asset_file(asset:str):
-        if asset not in {'ml-app.js','ml-app.css','pixel-theme.css'}:
+        if asset not in {'ml-app.js','ml-app.css','pixel-theme.css','evolution.json'}:
             raise HTTPException(404,'Unknown asset.')
         return FileResponse(static/asset)
     busy=threading.Lock()
@@ -231,7 +302,7 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
                 'clarification':{'reason':reason,'available_datasets':datasets},'usage':gateway.snapshot(),
                 'source':source or {},'events':[],'training_fits':0,'test_evaluated':False}
         save(path/'report.json',report)
-        save(path/'state.json',{'run_id':path.name,'status':'needs_input','reason':reason,'available_datasets':datasets})
+        return {'run_id':path.name,'status':'needs_input','reason':reason,'available_datasets':datasets}
 
     def answer_followup(path,body,context,gateway):
         import copy
@@ -241,7 +312,7 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
         append_event(path,{'event':'review_started','tier':'reviewer','execution_kind':'answer_followup'})
         from ml_engine import object_response
         review=object_response(gateway.call('reviewer',[
-            {'role':'system','content':ANSWER_RULES+' Return answer in Chinese. Do not claim any new execution. Missing evidence requires revise, not invented results.'},
+            {'role':'system','content':ANSWER_RULES+' Return answer in Chinese. Do not claim any new execution. Approve an explanation that directly answers the current question, including explicitly acknowledging a quantity the user conditionally asks whether we computed. Revise if a requested supported deliverable is actually missing. Never invent evidence.'},
             {'role':'user','content':json.dumps({'current_question':body.goal,'answer_contract':answer_contract(body.goal),'evidence':evidence},ensure_ascii=False)}],timeout=35))
         if not isinstance(review.get('answer'),str) or not review['answer'].strip() or review.get('decision') not in ('approve','revise','reject'):
             raise ValueError('Follow-up reviewer returned invalid answer.')
@@ -253,15 +324,21 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
             outputs['question']=body.goal
             outputs['prediction_download_url']=evidence['prediction_download_url']
             outputs['predictions']=outputs.get('predictions',[])[:20]
-        report.update(review=present_answer(review,body.goal,outputs,evidence['prediction_download_url']),
+        rendered=present_answer(review,body.goal,outputs,evidence['prediction_download_url'])
+        prior_status=report.get('research_status')
+        status='needs_revision'
+        if rendered['decision']=='approve':
+            status='partial_completed' if outputs and outputs.get('scope')=='training_association_only' else 'approved' if outputs else 'needs_clarification'
+        report.update(review=rendered,
             execution_kind='answer_followup',context={k:context[k] for k in ('parent_run_id','evidence_run_id')},
             training_fits=0,test_evaluated=False,final_test=None,usage=gateway.snapshot(),review_performed=True,
-            research_status='approved' if review['decision']=='approve' else 'needs_revision',events=[])
+            research_status=status,context_research_status=prior_status,events=[])
         append_event(path,{'event':'final_review','tier':'reviewer','review':report['review']})
         return report
 
     def execute(path,body,clients,context=None):
         engine=None
+        terminal_state=None
         meter=BalanceMeter(clients)
         if client_factory is None:price_feed.refresh_async()
         gateway=TierBudget(_ClientSwitch(clients),ModelLimits(body.max_calls,body.max_tokens,body.max_seconds),price_feed=price_feed)
@@ -275,28 +352,34 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
                 catalog=(catalog_factory or LocalCatalog)()
                 matches=catalog.search(goal) if hasattr(catalog,'records') else []
                 old_id=context['report'].get('source',{}).get('dataset_id')
-                if matches and old_id not in {r['id'] for r in matches}:
+                import csv as csv_module
+                previous_columns=next(csv_module.reader((context['path']/'data.csv').read_text(encoding='utf-8-sig').splitlines()),[]) if (context['path']/'data.csv').exists() else []
+                compatible=any(len(set(previous_columns)&set(catalog.schema(r['id'])))>=max(2,len(previous_columns)//2) for r in matches) if matches and not old_id and hasattr(catalog,'schema') else False
+                if matches and ((old_id and old_id not in {r['id'] for r in matches}) or (not old_id and not compatible)):
                     use_context=False
             if use_context:
                 previous=context['report']
                 columns=list(__import__('csv').reader((context['path']/'data.csv').read_text(encoding='utf-8').splitlines()))[0] if (context['path']/'data.csv').exists() else []
                 gap=scope_gap(goal,columns,previous.get('source',{}))
                 if gap:
-                    needs_input_report(path,gap,gateway,previous.get('source'))
+                    terminal_state=needs_input_report(path,gap,gateway,previous.get('source'))
                     return
-            if use_context and not requires_experiment(goal):
+            if use_context and (training_forbidden(goal) or (not requires_experiment(goal) and not needs_new_analysis(goal,context['report'].get('research_outputs'),columns) and not needs_prediction_execution(goal,context['report'].get('research_outputs')))):
                 report=answer_followup(path,body,context,gateway)
                 save(path/'report.json',report)
-                save(path/'state.json',{'run_id':path.name,'status':'completed' if report['research_status']=='approved' else 'needs_revision'})
+                terminal_state={'run_id':path.name,'status':{'approved':'completed','partial_completed':'partial_completed','needs_clarification':'needs_input'}.get(report['research_status'],'needs_revision')}
+                return
+            if training_forbidden(goal):
+                terminal_state=needs_input_report(path,'已遵守不训练的要求。本次没有关联可解释的已有研究结果，请打开原任务后追问；未执行模型训练。',gateway)
                 return
             if use_context:
                 if not (context['path']/'data.csv').exists():
-                    needs_input_report(path,'上一轮没有可复用的数据，请上传 CSV 或明确数据集。',gateway)
+                    terminal_state=needs_input_report(path,'上一轮没有可复用的数据，请上传 CSV 或明确数据集。',gateway)
                     return
                 (path/'data.csv').write_bytes((context['path']/'data.csv').read_bytes())
                 provenance=context['report'].get('source',{})
                 target=target or context['report'].get('protocol',{}).get('target')
-                target=target_from_question(goal,columns) or target
+                target=research_target(goal,columns,target)
                 save(path/'source.json',provenance)
                 append_event(path,{'event':'context_loaded','source_run':context['evidence_run_id'],'reason':'复用上一轮数据，执行新的研究请求'})
             elif body.csv_text is None:
@@ -309,21 +392,23 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
                 save(path/'source.json',{'provider':'user_csv','target':target})
             import csv as csv_module
             columns=next(csv_module.reader((path/'data.csv').read_text(encoding='utf-8-sig').splitlines()),[])
-            target=target_from_question(goal,columns) or target
+            target=research_target(goal,columns,target)
             source_info=json.loads((path/'source.json').read_text(encoding='utf-8'))
             gap=scope_gap(goal,columns,source_info)
             if gap:
-                needs_input_report(path,gap,gateway,source_info)
+                terminal_state=needs_input_report(path,gap,gateway,source_info)
                 return
-            session=ResearchSession(path/'data.csv',target)
+            session=ResearchSession(path/'data.csv',target,seed=body.seed)
             session.ensure_ready()
             save(path/'protocol.json',{'dataset_sha256':session.dataset_sha256,'seed':session.seed,
                  'target':target,'model_roles':{r:getattr(c,'model','configured') for r,c in clients.items()},
                  'capabilities':CAPABILITIES,'request':body.model_dump(exclude={'csv_text'}),
                  'source':json.loads((path/'source.json').read_text(encoding='utf-8'))})
-            engine=MLResearch(session,clients,strategy_store=strategies,lessons=LessonStore(root/'experiment-lessons.sqlite3',session,source_run=path.name),experience=ExperienceBank(root).find(session),deliverer=deliver,max_calls=body.max_calls,max_tokens=body.max_tokens,
+            memory_root=root/'memory-experiments'/body.memory_namespace if body.memory_namespace else root
+            memory_root.mkdir(parents=True,exist_ok=True)
+            engine=MLResearch(session,clients,strategy_store=strategies,lessons=LessonStore(memory_root/'experiment-lessons.sqlite3',session,source_run=path.name),experience=ExperienceBank(memory_root).find(session) if body.use_memory else None,consult_lessons=body.use_memory,deliverer=deliver,max_calls=body.max_calls,max_tokens=body.max_tokens,
                               max_seconds=body.max_seconds,max_fits=body.max_fits,max_expert_calls=body.max_expert_calls,
-                              emit=lambda event: append_event(path,event),gateway=gateway,
+                              emit=lambda event: append_event(path,event),gateway=gateway,max_rounds=body.max_rounds,patience=body.patience,economy=body.economy,capability=CapabilityMemory(root/"capability.sqlite3"),
                               answer_context={'current_question':body.goal,'previous':evidence_summary(context['report'],context['evidence_run_id']) if use_context else None,
                                               'prediction_download_url':'/ml/runs/'+path.name+'/predictions'})
             report=engine.run(body.goal,body.evaluate_test)
@@ -343,10 +428,14 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
                     for row in outputs['predictions']:
                         writer.writerow({**{k:row.get(k) for k in fields[:5]},**{'probability_'+k:v for k,v in row.get('probabilities',{}).items()}})
             save(path/'report.json',report)
-            save(path/'state.json',{'run_id':path.name,'status':{'needs_clarification':'needs_input','blocked':'blocked','partial_completed':'partial_completed','approved':'completed'}.get(report['research_status'],'needs_revision')})
+            if body.memory_namespace:
+                # Isolated evaluation history contains only reproducible champion
+                # metadata, never account balances, secrets or raw prediction rows.
+                save(memory_root/path.name/'report.json',{k:report.get(k) for k in ('research_status','best','protocol','source')})
+            terminal_state={'run_id':path.name,'status':{'needs_clarification':'needs_input','blocked':'blocked','partial_completed':'partial_completed','approved':'completed'}.get(report['research_status'],'needs_revision')}
         except Exception as exc:
             if isinstance(exc,DataSourceError) and exc.needs_input:
-                needs_input_report(path,exc.reason,gateway)
+                terminal_state=needs_input_report(path,exc.reason,gateway)
                 return
             if engine and engine.lessons:
                 try: engine.lessons.record(None,'failed',error_type=type(exc).__name__)
@@ -359,14 +448,16 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
             # Keep the concrete failure reason: a bare class name cannot be acted on.
             _detail=' '.join(str(exc).split())
             _detail=''.join(ch for ch in _detail if ch.isprintable())[:200].rstrip('。.')
-            save(path/'state.json',{'run_id':path.name,'status':'failed','failure_kind':failure_kind(exc),'error_type':type(exc).__name__,
+            terminal_state={'run_id':path.name,'status':'failed','failure_kind':failure_kind(exc),'error_type':type(exc).__name__,
                                    'stage':getattr(exc,'stage','research_execution' if engine else 'source_collection_or_data_validation'),
                                    'http_status':getattr(exc,'http_status',None),
                                    'detail':_detail,
-                                   'reason':exc.reason if isinstance(exc,DataSourceError) else ({'network_failure':'网络请求失败（最多重试一次），已保留部分证据。','budget_exhausted':'调用、Token 或时间预算已用尽，已停止，不会超额重试。','model_protocol_error':'响应协议、认证或数据校验失败；不自动重试。'}[failure_kind(exc)]+' ')+ '研究已停止，部分记录已保留。失败类型：'+type(exc).__name__+'。'+(('具体原因：'+_detail+'。') if _detail else '')+'请检查模型响应、数据要求与预算。'})
+                                   'reason':exc.reason if isinstance(exc,DataSourceError) else ({'network_failure':'网络请求失败（最多重试一次），已保留部分证据。','budget_exhausted':'调用、Token 或时间预算已用尽，已停止，不会超额重试。','model_protocol_error':'响应协议、认证或数据校验失败；不自动重试。'}[failure_kind(exc)]+' ')+ '研究已停止，部分记录已保留。失败类型：'+type(exc).__name__+'。'+(('具体原因：'+_detail+'。') if _detail else '')+'请检查模型响应、数据要求与预算。'}
         finally:
             try:
-                observation=meter.finish()
+                try: observation=meter.finish()
+                except Exception:
+                    observation={'task_actual_charge':None,'task_actual_status':'provider_task_receipt_unavailable','attribution':'account_window_not_task_charge','observations':[],'errors':[{'status':'balance_unavailable'}]}
                 save(path/'billing.json',observation)
                 for filename in ('report.json','partial.json'):
                     file=path/filename
@@ -374,6 +465,7 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
                         payload=json.loads(file.read_text(encoding='utf-8'))
                         payload['account_billing']=observation
                         save(file,payload)
+                if terminal_state is not None:save(path/'state.json',terminal_state)
             finally:busy.release()
 
     def append_event(path,event):
@@ -392,7 +484,7 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
             if body.csv_text is not None:
                 if not body.target: raise ValueError('CSV input requires a target column.')
                 (path/'data.csv').write_bytes(body.csv_text.encode('utf-8'))
-                check=ResearchSession(path/'data.csv',body.target)
+                check=ResearchSession(path/'data.csv',body.target,seed=body.seed)
                 check.ensure_ready()
             save(path/'request.json',body.model_dump(exclude={'csv_text'}))
             save(path/'state.json',{'run_id':path.name,'status':'queued'})

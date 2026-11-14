@@ -1,3 +1,5 @@
+> V23 current specification: [competition-v23.md](competition-v23.md). It supersedes the historical scope and launch instructions below.
+
 当前范围：仅保留来源采集、分类派发、低/高成本工作站、最终审核和报告导出。自进化与反馈学习暂停，默认服务不加载历史纠错记忆，不提供反馈接口或旧演示静态资源。
 
 # 主链路：来源 → 分类派发 → 工作站 → 审核整合

@@ -5,10 +5,13 @@ import subprocess
 import sys
 import time
 import urllib.request
+import json
 import webbrowser
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(root))
+from app_version import APP_VERSION
 port = int(os.environ.get('EVORESEARCH_WEB_PORT','8012'))
 url = f'http://127.0.0.1:{port}/'
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -17,7 +20,8 @@ opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 def ready():
     try:
         with opener.open(url+'ml/version', timeout=1) as response:
-            return b'ml-chain-19' in response.read(1000)
+            state=json.loads(response.read(10000))
+            return state.get('version')==APP_VERSION and state.get('restart_required') is False
     except Exception:
         return False
 

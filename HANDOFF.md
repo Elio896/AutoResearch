@@ -881,3 +881,23 @@ See docs/codex-v22-ui-billing.md. Review workspace: 453 tests OK; pixel UI and a
 校验：远端根目录含 `ml_api.py`、`billing_actual.py`、`answer_evidence.py`、`research_context.py`、`static/pixel-theme.css`、`docs/codex-v22-ui-billing.md`、`tests/test_actual_billing.py`；`artifacts/`、`data/`、`.venv/`、`credentials.dpapi` 均**不在**仓库（.gitignore 生效）。
 
 已知缺口：`data/` 被忽略，新克隆没有 `customer_churn.csv`（另 3 个 sklearn 数据集会自动重建）；要完全可复现需单独下载 OpenML 40701 或把 `data/catalog/*.csv` 加入白名单。
+
+
+## V22 functional review completed 2026-11-15T00:01:05.476470+08:00
+
+See docs/v22-review-fixes.md. Final full suite466 passed60.353s, JS syntax passed. Live8018 V22 restart_required=false. Native browser actual research60922e1b produced1000-row CSV; negative retrain bug reproduced840be560 and fixed69f596c3(1modelcall,0fits); association followupc4f7077f remains partial_completed(0fits,0predictions). Robot retained per latest explicit user request. Snapshot/account-window figures are not task invoice charges. Not all30questions rerun. Auto strategy evolution remains disabled. New required source app_version.py must be included when syncing. No GitHub push performed. Evidence artifacts/v22-review-acceptance/acceptance.json. Legacy socket ResourceWarning retained.
+
+
+## V23 final source freeze 2026-11-14T16:53:02.790616+00:00
+
+Final backend ad011eea deployed8018 restart_required=false. Full484tests OK88.971s+JS syntax;13TCP group13run0skip13pass2.489s (includes config-only cases). r2all30submitted28structuralpass; failures8/13 retained. Fixed association-to-prediction execution and passed actual incumbent/history to high recheck; no silent association downgrade for requested prediction; significance phrasing qualified. r3frozen allphase running. No backend edits until complete. docs/competition-v23.md; no GitHub push.
+
+
+## V23 competition finish 2026-11-14T17:15:46.445536+00:00
+
+V23 final8018 source0ad814a0 restart_required=false. Frozenad011eea:30QA15completed8partial7needs_input0failed,30structuralchecks;6paired/12arms;3seedmemory;222modelattempts officialcalculatedUSD.264564347(notinvoice). RoutedmacroF1+.00254 butcost+17.90%,time+35.56%;memorymean+.00343,2/3better,noefficiencyclaim. Browserplain-improvebugff1005 retained;fixcf600 actual4fits2rounds7calls1000CSV F1.9146;followupa3f1 0fits1call,URLupdates+refreshverified. Full484passed85.315s+targeted26+Node/JS. Robot retained,encryptedkeysunchanged,noGitHubpush. docs/competition-v23-results.md; originalfailedpilotsretained.
+
+
+## Token economy verified 2026-11-14T17:35:46.351345+00:00
+
+User prioritized tokens/cost over marginal F1. Website economy:true enabled; stable route reuse, compact actual audit evidence, feedback/lesson summaries, marginal-gain high candidate substitution, revalidated-history direct prediction. Full491passed95.546s+6economy tests+Node/JS; initial489run1legacy campaign failure retained, isolated rerunpassed15.396s. Realcold2pairs mean tokens-22.09%,officialUSD-40.24%,meanF1-.000583 BUT seed42gap.012917 fails.005; seed7better. No stable noninferiority or speed claim. Warm cd4aaa6e 1fit2calls3176tokensUSD.0015288281000CSV F1.914629samehistory, no test. Nativebrowserlabel/result/downloadverified; source66f31803restartfalse. docs/token-economy.md; firstfailedgatepilot retained. No keys changed, noGitHubpush.

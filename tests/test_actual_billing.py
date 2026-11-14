@@ -48,7 +48,7 @@ class ActualBillingTests(unittest.TestCase):
                 if value:self.ids.append(value)
         p=Elements();p.feed(Path('static/ml-app.html').read_text(encoding='utf-8'))
         self.assertLess(p.ids.index('form'),p.ids.index('flow-state'))
-        self.assertLess(p.ids.index('research-answer'),p.ids.index('flow-state'))
+        self.assertLess(p.ids.index('flow-state'),p.ids.index('research-answer'))
         self.assertEqual(len(p.ids),len(set(p.ids)))
 
     def test_every_literal_javascript_id_exists(self):

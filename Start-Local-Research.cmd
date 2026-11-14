@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo EvoResearch launcher - expected backend: ml-chain-18
+echo EvoResearch launcher - expected backend: ml-chain-23
 echo Project: %CD%
 echo Website: http://127.0.0.1:8018/
 set "EVORESEARCH_WEB_PORT=8018"

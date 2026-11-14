@@ -13,3 +13,18 @@ button,.button{border:1px solid #779763;border-radius:0;background:#102713;color
 .hero{padding-top:28px;padding-bottom:28px;grid-template-columns:1fr 220px}.hero h1{font-size:clamp(30px,3.1vw,40px);margin:12px 0}.pixel-console{height:200px}.pixel-bot{height:145px}.hero-tags{margin-top:16px}
 
 .billing-metrics{grid-template-columns:1fr 1.5fr}@media(max-width:520px){.billing-metrics{grid-template-columns:1fr}}
+
+/* Minimal hero: no characters or robot illustration. */
+.hero{grid-template-columns:1fr}.hero-copy{max-width:900px}
+
+/* --- original V22 pixel console restored (yuyu) --- */
+.pixel-console{height:256px;position:relative;border:1px solid var(--lime);background:linear-gradient(transparent 95%,#b7ff5014 95%),#081b0d;background-size:100% 22px;overflow:hidden;box-shadow:8px 8px 0 #193a15;display:flex;align-items:center;justify-content:center}
+.console-label,.console-status{position:absolute;left:14px;font:10px Consolas,monospace;color:var(--lime);letter-spacing:1px}
+.console-label{top:13px}.console-status{bottom:14px}
+.pixel-bot{width:155px;height:170px;animation:float-worker 4s ease-in-out infinite;filter:drop-shadow(0 0 16px #b7ff5030)}
+.console-grid{position:absolute;bottom:0;width:180%;height:40px;border-top:1px solid var(--line);transform:perspective(70px) rotateX(35deg);background:repeating-linear-gradient(90deg,transparent 0 22px,#365736 23px 24px)}
+@media(max-width:800px){.hero{grid-template-columns:1fr 155px;gap:18px}.pixel-console{height:200px}.pixel-bot{width:120px;height:132px}.console-label,.console-status{font-size:8px}}
+@media(prefers-reduced-motion:reduce){.pixel-bot{animation:none}}
+
+/* hero-bot-layout (yuyu) */
+@media(min-width:801px){.hero{grid-template-columns:minmax(0,1fr) 260px;align-items:center}}
