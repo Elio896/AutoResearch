@@ -172,3 +172,40 @@ class IntegrityTests(unittest.TestCase):
         })
         findings = inspect_features(frame, labels, 'synthetic2', 'target')
         self.assertEqual(findings, [])
+    def test_successful_run_still_surfaces_risk_warnings(self):
+        """二德子指出的告警不出口问题。
+
+        场景：candidate 泄漏列不阻断训练，于是 status=success、F1 很高，
+        但如果 result 里没有 findings，用户会以为这份数据是干净的。
+        """
+        import numpy as np
+        import pandas as pd
+        from executor import ResearchSession
+
+        rng = np.random.default_rng(7)
+        n = 600
+        labels = rng.choice(['0', '1'], n, p=[0.9, 0.1])
+        fraud = (labels == '1').astype(int)
+        frame = pd.DataFrame({
+            'amount': rng.normal(100, 40, n).round(2),
+            'hour': rng.integers(0, 24, n),
+            'chargeback_filed': fraud ^ (rng.random(n) < 0.1).astype(int),
+            'target': labels,
+        })
+        path = self.root / 'warn.csv'
+        frame.to_csv(path, index=False)
+
+        session = ResearchSession(path, 'target')
+        result = session.run('logistic_regression', {})
+
+        # 训练照常成功（candidate 不阻断）
+        self.assertEqual(result['status'], 'success')
+        self.assertFalse(result['risk_blocked'])
+        # 但风险必须出现在 result 里
+        columns = [w['column'] for w in result['risk_warnings']]
+        self.assertIn('chargeback_filed', columns)
+        self.assertIn('post_hoc_name',
+                      next(w['signals'] for w in result['risk_warnings']
+                           if w['column'] == 'chargeback_filed'))
+        # 人的决策为空也不能把机器的发现一起吞掉
+        self.assertEqual(result['feature_review'], {})

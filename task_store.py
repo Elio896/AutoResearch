@@ -192,6 +192,18 @@ class TaskStore:
         with self.connection() as db:
             db.execute('UPDATE experiments SET status=?, result=? WHERE task_id=? AND number=?',
                        ('success', json.dumps(result), task_id, number))
+            # 机器发现的可疑特征要留痕。candidate 不阻断训练，
+            # 但那不等于"没有风险"——不记这条，事后就看不出这次跑过带病数据。
+            warnings = result.get('risk_warnings') or []
+            if warnings:
+                db.execute('INSERT INTO events (task_id,payload) VALUES (?,?)', (
+                    task_id, json.dumps({
+                        'event': 'feature_warned',
+                        'experiment': result.get('experiment_id'),
+                        'count': len(warnings),
+                        'columns': [w['column'] for w in warnings],
+                        'warnings': warnings,
+                    })))
         return result
 
     def finalize(self, task_id):

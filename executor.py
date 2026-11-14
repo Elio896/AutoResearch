@@ -160,6 +160,17 @@ class ResearchSession:
                   'dataset_sha256': self.dataset_sha256, 'split_sizes': self.split_sizes,
                   'excluded_columns': self.risk_report['excluded_columns'],
                   'feature_review': self.risk_report['decisions'],
+                  # 人的决策之外，必须把机器发现一起带出来。
+                  # 二德子 2026-11-14 指出：原来只输出 decisions，
+                  # 不传 --feature-decisions 时就只剩 {}，而 chargeback_filed
+                  # 其实已被标成 candidate——用户看到 success + 0.9546 却毫不知情。
+                  # candidate 不阻断之后，这个出口更不能缺。
+                  'risk_warnings': [
+                      {'column': f['column'], 'level': f['level'], 'signals': f['signals']}
+                      for f in self.risk_report['findings']
+                  ],
+                  'risk_findings': self.risk_report['findings'],
+                  'risk_blocked': self.risk_report['blocked'],
                   'validation_f1': float(f1_score(actual, predictions, average='macro', zero_division=0)),
                   'validation_accuracy': float(accuracy_score(actual, predictions)),
                   'duration_seconds': time.perf_counter() - started}
