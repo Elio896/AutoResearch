@@ -100,15 +100,13 @@ function renderAccountBilling(billing){
 /* --- iterative test charts: one metric per tab (yuyu) --- */
 const EVO_METRICS={
   tokens:{label:'单步 token',pick:s=>s.tokens,unit:'token',color:'#b7ff50',
-          note:'每一步本地推理消耗的 token；累计总量看上方摘要。转交的步骤不调用本地模型，因此为 0'},
-  seconds:{label:'单任务耗时',pick:s=>s.seconds,unit:'秒',color:'#7fd1ff',
-           note:'每一步从提问到试跑完成的墙钟时间；转交的步骤不调用本地模型，耗时为 0'},
-  waste:{label:'累计失败调用',pick:s=>s.cumulative_wasted,unit:'次',color:'#ff8a5c',
-         note:'本地模型尝试失败、白跑一次的累计次数；能力表学会之后不再增加'},
+          note:'这一步消耗的 token。转交的步骤不调用本地模型，所以是 0'},
+  seconds:{label:'单步耗时',pick:s=>s.seconds,unit:'秒',color:'#7fd1ff',
+           note:'这一步从提问到试跑完成的墙钟时间；转交的步骤为 0'},
+  failure:{label:'这一步失败了吗',pick:s=>(s.attempted&&!s.ok)?1:0,unit:'',color:'#ff8a5c',
+           note:'1=本地尝试失败，0=成功或直接转交。能力表学会之前会反复出现 1，学会之后变成 0'},
   evidence:{label:'有证据路由',pick:s=>s.evidenced_ratio,unit:'%',color:'#ffd166',
-            note:'路由时能力表里已有该数据桶记录的比例；0% 表示全靠试'},
-  round:{label:'按轮次汇总',round:true,unit:'token',color:'#a78bfa',
-         note:'每一轮 7 个任务的平均 token 与平均耗时'}
+            note:'路由时能力表里已有这个数据桶记录的比例；0% = 全靠试，越高说明越"学会了再派"'}
 };
 
 function evoScale(values,ticks){
