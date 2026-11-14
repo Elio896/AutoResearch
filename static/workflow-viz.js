@@ -38,7 +38,7 @@
     }
     return events;
   }
-  const cache={},researchModels={};let selected=null,replayTimer=null,replaying=false,originalTitles={};
+  const cache={},researchModels={};let selected=null,manual=false,replayTimer=null,replaying=false,originalTitles={};
   const $=id=>typeof document==='undefined'?null:document.getElementById(id);
   function labels(e){
     const names={data_ready:'准备原版数据',source_query:'搜索数据',source_collected:'数据收集完成',route:'按能力记录派发',worker_started:'正在请求模型',training_started:'执行真实训练',experiment:'训练结果已产生',escalation:'低站不足，交高级站',verification:'程序验证并记录结果',iteration_completed:'本步实验已结束',worker_failed:'本次调用或执行失败',stopped:'已达到预算上限',route_recheck_started:'高级模型正在复核派发',route_recheck_resolved:'高级复核完成',review_started:'审核模型正在检查证据',final_review:'审核完成'};
@@ -55,13 +55,15 @@
   }
   function draw(events,live,isReplay){
     if(!$('node-high'))return;ensurePackets();const data=cache[selected]||{},plan=derive(events,live),isDemo=selected==='demo';
+    const records=(data.usage||data.report?.usage||data.partial?.usage)?.records||[];
     const models=isDemo?{source:'原版数据 · 文件工具',classifier:'能力记忆 · 本地规则',low:data.model||'qwen2.5:3b-instruct-q4_K_M',high:data.high_model||data.usage?.records?.find(r=>r.role==='high')?.model||researchModels.high||'已配置高级模型',reviewer:'scikit-learn · 程序验证'}:researchModels;
     for(const role of roles){const node=$('node-'+role);if(!originalTitles[role])originalTitles[role]=node.querySelector('h3').textContent;
       node.querySelector('h3').textContent=isDemo&&role==='reviewer'?'验证 / 记录站':originalTitles[role];
-      if(models[role])$('model-'+role).textContent=models[role];
-      node.classList.toggle('visited',plan.visited.includes(role));node.classList.toggle('active',live&&plan.current===role);node.classList.toggle('expensive-call',role==='high'&&events.some(e=>e.event==='route_recheck_started'||e.event==='worker_started'&&e.tier==='high'));
-      node.classList.remove('error','needs-input');node.querySelector('.node-state').textContent=live&&plan.current===role?(isReplay?'回放此阶段':'正在执行'):plan.visited.includes(role)?'已发生':'等待任务';
-      $('action-'+role).textContent=plan.actions[role]?labels(plan.actions[role]):'本轮尚未执行';
+      const calls=records.filter(r=>r.role===role);const hasCalls=calls.length>0;
+      if(hasCalls)$('model-'+role).textContent=calls[calls.length-1].model;else if(models[role])$('model-'+role).textContent=models[role];
+      node.classList.toggle('visited',plan.visited.includes(role)||hasCalls);node.classList.toggle('active',live&&plan.current===role);node.classList.toggle('expensive-call',(role==='high'&&events.some(e=>e.event==='route_recheck_started'||e.event==='worker_started'&&e.tier==='high'))||calls.some(r=>r.model===researchModels.high));
+      node.classList.remove('error','needs-input');node.querySelector('.node-state').textContent=(live&&plan.current===role?(isReplay?'回放此阶段':'正在执行'):plan.visited.includes(role)||hasCalls?'已发生':'等待任务')+' · 模型请求 '+calls.length+' 次';
+      $('action-'+role).textContent=plan.actions[role]?(!isDemo&&plan.actions[role].event==='worker_started'?'工作站处理任务':labels(plan.actions[role])):hasCalls?'实际请求已记录，结果可在费用明细核对':'本轮尚未执行';
     }
     document.querySelectorAll('.flow-lines path').forEach(p=>{const key=p.id.slice(5);p.classList.remove('on');p.classList.toggle('visited',plan.edges.includes(key));p.classList.toggle('flowing',plan.activeEdges.includes(key));});
     document.querySelectorAll('.flow-packet-channel').forEach(g=>g.classList.toggle('moving',plan.activeEdges.includes(g.dataset.edge)));
@@ -78,8 +80,9 @@
   function stop(){clearInterval(replayTimer);replayTimer=null;replaying=false;}
   function update(kind,data){const prior=cache[kind];cache[kind]=data;if(!selected)selected=kind;
     const running=['running','queued'].includes(data.state||data.status);
-    if(running&&(!prior||prior.run_id!==data.run_id||!['running','queued'].includes(prior.state||prior.status))){stop();selected=kind;}
-    if(kind==='demo'&&!prior&&data.steps?.length&&!['running','queued'].includes(cache.research?.status)){selected=kind;}
+    if(running&&(!prior||prior.run_id!==data.run_id||!['running','queued'].includes(prior.state||prior.status))){stop();manual=false;selected=kind;}
+    if(kind==='research'&&data.run_id&&!manual)selected='research';
+    if(kind==='demo'&&!prior&&data.steps?.length&&!cache.research?.run_id&&!manual){selected=kind;}
     if(selected===kind&&!replaying)paint();
   }
   function replay(focusHigh=false){stop();const data=cache[selected];if(!data)return;const events=selected==='demo'?demoEvents(data):data.events||[];if(!events.length)return;
@@ -91,7 +94,7 @@
     replayTimer=setInterval(()=>{index++;if(index>sequence.length){stop();paint();return;}draw(sequence.slice(0,index),true,true);},650);
   }
   if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',()=>{
-    ensurePackets();$('flow-research').onclick=()=>{stop();selected='research';paint();};$('flow-demo').onclick=()=>{stop();selected='demo';paint();};$('flow-replay').onclick=()=>replay(false);$('flow-replay-high').onclick=()=>replay(true);$('flow-live').onclick=()=>{stop();paint();};
+    ensurePackets();$('flow-research').onclick=()=>{stop();manual=true;selected='research';paint();};$('flow-demo').onclick=()=>{stop();manual=true;selected='demo';paint();};$('flow-replay').onclick=()=>replay(false);$('flow-replay-high').onclick=()=>replay(true);$('flow-live').onclick=()=>{stop();paint();};
     document.addEventListener('visibilitychange',()=>document.documentElement.classList.toggle('flow-page-hidden',document.hidden));
   });
   return {derive,demoEvents,research:(state,events)=>update('research',{...state,events}),demo:data=>update('demo',data),configure:models=>{Object.assign(researchModels,models);if(selected==='research')paint();}};

@@ -83,5 +83,66 @@
       "license": "public",
       "note": "Public catalog provenance; no guarantee of suitability or permission for every downstream use."
     }
+  },
+  {
+    "id": "sme_credit",
+    "name": "sme_credit",
+    "target": "risk_grade",
+    "aliases": [
+      "sme credit",
+      "credit risk",
+      "小微信贷",
+      "信贷风险",
+      "企业风险",
+      "风险等级"
+    ],
+    "rows": 9000,
+    "columns": 23,
+    "sha256": "157c17483cfb80980e8847223d17fc9ed4c116a7c6b73603c92e939f067b4b16",
+    "provenance": {
+      "provider": "synthetic local generator",
+      "name": "sme_credit",
+      "note": "合成的小微企业信贷风险数据，用于压力测试路由与升级；不代表真实机构数据。"
+    }
+  },
+  {
+    "id": "sensor_fault",
+    "name": "sensor_fault",
+    "target": "fault_type",
+    "aliases": [
+      "sensor fault",
+      "fault detection",
+      "传感器故障",
+      "设备故障",
+      "故障诊断"
+    ],
+    "rows": 6000,
+    "columns": 26,
+    "sha256": "218234f513038c36370db4ab02aab92f32d634a769685914712812ec1efdc715",
+    "provenance": {
+      "provider": "synthetic local generator",
+      "name": "sensor_fault",
+      "note": "合成的传感器故障数据，多分类、含冗余通道。"
+    }
+  },
+  {
+    "id": "ops_churn",
+    "name": "ops_churn",
+    "target": "churn",
+    "aliases": [
+      "ops churn",
+      "ops customers",
+      "运营流失",
+      "宽带客户流失",
+      "运营商流失"
+    ],
+    "rows": 4000,
+    "columns": 8,
+    "sha256": "cd4a5aeea74dcee8d717ac144cae50848b1428e818d50af835dfcd17cd41ef1d",
+    "provenance": {
+      "provider": "synthetic local generator（源自本地 SQLite ops.db）",
+      "name": "ops_churn",
+      "note": "由本地 SQLite 表导出的运营客户流失数据。"
+    }
   }
 ]
