@@ -25,3 +25,7 @@ research_agent_bundle.zip
 compare/
 *.zip
 
+
+# Encrypted model credential storage
+*.dpapi
+*.dpapi.*.tmp

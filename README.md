@@ -1,8 +1,24 @@
 # EvoResearch
 
-面向轻量机器学习任务的**预算感知自主科研 Agent 系统**。用户给一份 CSV 和一个研究目标，系统用本地小模型完成研究闭环，只在本地确实做不出来时才花云端 token。
+**当前主线：机器学习 API 工作站链路。** 自然语言/CSV → 来源模型（公开数据搜索、获取与规划）→ Jev 分类派发 → 低成本/高成本工作站 → 高性能模型审核整合。双击 `双击打开机器学习.cmd` 打开新入口。配置、边界与验收见 `docs/ml-pipeline.md`。下方历史演示和旧验证记录不代表当前默认应用的功能清单。
 
-## 一句话讲清它怎么省钱
+项目展示入口：`/showcase`。可按按钮实际演示“研究 → 用户纠错 → 新会话复验 → 撤销负对照”，以及独立策略副本的回滚。无需模型密钥。启动方式与验证边界见 `docs/showcase-guide.md`。
+
+**当前严格复测状态**：13 项原跳过测试已全部执行，0 跳过，4 项配置校验通过、9 项协议/传输失败或报错；实际 TCP connect 被环境以 WinError 10013 拒绝。真实 LLM 评测因服务器无模型凭据而 blocked，不能宣称已验证学习效果。最新证据和运行方式见 `docs/live-verification-status-2026-11-14.md`。
+
+`python tools/run_asgi_checks.py` 现在默认不跳过 TCP；`--offline` 仅为明确要求的离线检查。真实模型学习评测使用 `tools/evaluate_live_learning.py`，单独衡量原始模型提案和执行拦截结果。
+
+最新验证与纠错学习：新增用户反馈 → 持久化约束 → 下次训练前检查，页面 `/research-agent` 可提交、查看和撤销纠错，并展示创新设计及真实消融结果。**9 个跨会话案例中，脚本错误提案造成的执行错误从 12 次降为 0，无关数据误拦截 0。** 完整证据、质量取舍和验证边界见 `docs/feedback-learning-2026-11-14.md`。
+
+回归命令 `python tools/run_asgi_checks.py`：357 项中 344 项通过、13 项真实 TCP 供应商夹具受环境限制跳过。此为实际进程内 HTTP/ASGI 集成测试；真实浏览器及云端模型能力不由此推导。
+
+面向轻量机器学习任务的**预算感知自主科研 Agent 系统**。当前赛题入口是 `/research-agent`：不要求本地模型，支持多个职责共用一个 LLM，以及真实训练的规则对照模式。
+
+本轮对照赛题完善了实际策略绑定、独立任务评测、两轮策略迭代、共享 token / 调用预算、失败与未知用量记账、证据快照及回滚。完整核查和实测结果见 `docs/topic-alignment-2026-11-14.md`。
+
+在已有依赖环境运行 `./start-research.ps1`，打开 `http://127.0.0.1:8002/research-agent`。无模型验证：`python tools/run_research_system.py --output artifacts/new-campaign`。规则结果不能视为 LLM 自主能力或云端节省效果。
+
+## 可选工业分层模式（兼容原实现）
 
 ```
 Jev Harness（0 token，纯规则）   →  这次失败值得上云吗？
@@ -20,10 +36,10 @@ Jev Harness（0 token，纯规则）   →  这次失败值得上云吗？
 |---|---|---|
 | Analyst | pandas 统计画像（缺失、不平衡、小样本） | **0** |
 | Manager | 预算算术 + 停/升级判据 | **0** |
-| Scientist | 本地 Qwen 7B 提方案（必带可证伪假设） | 中 |
+| Scientist | 已配置的单个 LLM 或可选本地模型提方案（必带可证伪假设） | 按真实 usage |
 | Experimenter | scikit-learn 真训练 | **0** |
 | Reviewer | 规则判好坏 + 闸门 + 回滚标记 | **0** |
-| RedTeam | 本地 Qwen 3B 找茬（必须可被代码检验） | 低 |
+| RedTeam | 可选模型质疑，预算内执行代码检验 | 按真实 usage |
 
 ## EvoUndo：能被审计的回滚
 

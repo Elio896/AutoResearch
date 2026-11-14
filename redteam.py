@@ -191,12 +191,14 @@ class RedTeam:
     def __init__(self, proposer=None, max_claims: int = 2):
         self.proposer = proposer
         self.max_claims = max_claims
+        self.last_tokens = {'prompt': 0, 'completion': 0}
 
     def propose(self, profile: dict, best: dict, history: list | None = None,
                 timeout: float = 30) -> tuple[list[dict], list[dict]]:
         """返回 (合法质疑, 被丢弃的)。"""
         if self.proposer is None:
             return [], []
+        self.last_tokens = {'prompt': 0, 'completion': 0}
         prompt = (
             'You are the RED TEAM. Your job is to attack the current best experiment, '
             'not to propose new ones.\n'
@@ -215,6 +217,11 @@ class RedTeam:
             ], timeout=timeout)
         except Exception:
             return [], [{'reason': 'proposer_error'}]
+        if isinstance(response, str):
+            response = {'message': {'content': response}}
+        usage = getattr(self.proposer, 'last_usage', {}) or {}
+        self.last_tokens = {'prompt': int(response.get('prompt_eval_count') or usage.get('prompt_tokens', 0)),
+                            'completion': int(response.get('eval_count') or usage.get('completion_tokens', 0))}
         content = ((response.get('message') or {}).get('content') or '').strip()
         return self.parse(content)
 

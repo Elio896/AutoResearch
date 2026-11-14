@@ -98,7 +98,7 @@ class ReviewInput(BaseModel):
     decisions: dict[str, FeatureDecision]
 
 
-def create_app(data_directory=None):
+def create_legacy_app(data_directory=None):
     root = Path(data_directory or Path(__file__).parent / 'artifacts' / 'api').resolve()
     uploads = root / 'uploads'
     uploads.mkdir(parents=True, exist_ok=True)
@@ -107,6 +107,10 @@ def create_app(data_directory=None):
     app = FastAPI(title='EvoResearch', version='0.1.0', description='Local development API; no authentication or paid model calls.')
     static_root = Path(__file__).parent / 'static'
     app.mount('/static', StaticFiles(directory=static_root), name='static')
+    from research_service import register_research_routes
+    register_research_routes(app, root, static_root)
+    from showcase import register_showcase
+    register_showcase(app, root)
 
     @app.get('/', include_in_schema=False)
     def workbench():
@@ -383,4 +387,53 @@ def create_app(data_directory=None):
         from sklearn.datasets import load_iris
         return {'csv_text': load_iris(as_frame=True).frame.to_csv(index=False), 'target': 'target', 'name': 'iris.csv'}
 
+    @app.get('/strategy/state')
+    def strategy_state():
+        """只读：当前正式策略、全部版本、最近事件。给前端如实展示用。"""
+        from strategy_store import StrategyStore
+        store = StrategyStore()
+        active = store.active()
+        versions = store.versions()
+        diffs = {}
+        if active is not None:
+            for version in versions:
+                if version['strategy_id'] == active['strategy_id']:
+                    continue
+                try:
+                    diffs[version['strategy_id']] = store.diff(active['strategy_id'],
+                                                              version['strategy_id'])
+                except Exception:               # noqa: BLE001 - 单个版本坏了不影响整页
+                    continue
+        return {
+            'active': active,
+            'versions': versions,
+            'diffs': diffs,
+            'events': store.events()[-40:],
+            'note': None if active else '还没有策略库（先 bootstrap 或跑一次策略流程）',
+        }
+
+    @app.get('/strategy/failures')
+    def strategy_failures():
+        """只读：最近一次失败模式检测结果（由 failure_modes 真跑产生，不在这里现编）。"""
+        import json as _json
+        from pathlib import Path as _Path
+        path = _Path('runtime') / 'last_failures.json'
+        if not path.is_file():
+            return {'records': [], 'note': '还没有失败检测结果（跑一次检测会写到这里）',
+                    'source': str(path)}
+        try:
+            payload = _json.loads(path.read_text(encoding='utf-8'))
+        except Exception as exc:                 # noqa: BLE001
+            return {'records': [], 'note': f'读不了 {path}：{exc}', 'source': str(path)}
+        if isinstance(payload, dict) and 'stuck_run' in payload:
+            payload = dict(payload['stuck_run'])   # 验收报告里包了一层，这里摊平
+        payload['source'] = str(path)
+        return payload
+
     return app
+
+
+def create_app(data_directory=None):
+    """Production entry: reduced API-only machine-learning application."""
+    from ml_api import create_app as create_ml_app
+    return create_ml_app(data_directory)

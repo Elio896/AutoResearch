@@ -234,7 +234,7 @@ class ResearchSession:
         actual = self.y.iloc[self.validation_indices]
         experiment_id = f'exp_{len(self.experiments) + 1:03d}'
         result = {'status': 'success', 'experiment_id': experiment_id,
-                  'model': model, 'parameters': options, 'seed': self.seed,
+                  'model': model, 'parameters': options, 'preprocessing': dict(prep), 'seed': self.seed,
                   'dataset_sha256': self.dataset_sha256, 'split_sizes': self.split_sizes,
                   'excluded_columns': self.risk_report['excluded_columns'],
                   'feature_review': self.risk_report['decisions'],

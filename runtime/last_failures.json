@@ -1,0 +1,95 @@
+{
+  "stuck_run": {
+    "schema": 1,
+    "run_id": "run_stuck",
+    "strategy_id": "strategy_001",
+    "event_count": 21,
+    "experiment_count": 3,
+    "proposal_count": 2,
+    "failure_count": 1,
+    "records": [
+      {
+        "failure_type": "repeated_proposal",
+        "event_refs": [
+          "event_007",
+          "event_013"
+        ],
+        "measurements": {
+          "duplicate_count": 2,
+          "model": "logistic_regression",
+          "parameters": {
+            "max_iter": 500
+          }
+        },
+        "schema": 1,
+        "run_id": "run_stuck",
+        "strategy_id": "strategy_001",
+        "detected_at": 1794631045.234,
+        "evidence_complete": true
+      }
+    ],
+    "insufficient": false,
+    "insufficient_reasons": [],
+    "detectors": {
+      "repeated_proposal": {
+        "evaluated": true,
+        "records": 1
+      },
+      "invalid_structure_repeat": {
+        "evaluated": true,
+        "records": 0
+      },
+      "same_family_tuning_no_gain": {
+        "evaluated": true,
+        "records": 0
+      },
+      "repeated_change_no_gain": {
+        "evaluated": true,
+        "records": 0
+      },
+      "operation_check_failed": {
+        "evaluated": false,
+        "reason": "没有提供工作记录"
+      }
+    },
+    "verdict": "failures_found"
+  },
+  "thin_run": {
+    "schema": 1,
+    "run_id": "run_tiny",
+    "strategy_id": "strategy_001",
+    "event_count": 8,
+    "experiment_count": 1,
+    "proposal_count": 0,
+    "failure_count": 0,
+    "records": [],
+    "insufficient": true,
+    "insufficient_reasons": [
+      "实验只有 1 次，少于 2 次，不足以判断",
+      "没有提案事件，无法判断是否重复"
+    ],
+    "detectors": {
+      "repeated_proposal": {
+        "evaluated": true,
+        "records": 0
+      },
+      "invalid_structure_repeat": {
+        "evaluated": true,
+        "records": 0
+      },
+      "same_family_tuning_no_gain": {
+        "evaluated": true,
+        "records": 0
+      },
+      "repeated_change_no_gain": {
+        "evaluated": true,
+        "records": 0
+      },
+      "operation_check_failed": {
+        "evaluated": false,
+        "reason": "没有提供工作记录"
+      }
+    },
+    "verdict": "insufficient_evidence"
+  }
+}

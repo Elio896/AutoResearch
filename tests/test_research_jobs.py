@@ -42,7 +42,7 @@ class ResearchJobTests(unittest.TestCase):
 
     def test_api_starts_local_research_and_serves_workbench(self):
         from fastapi.testclient import TestClient
-        from api import create_app
+        from api import create_legacy_app as create_app
         from research_jobs import ResearchJobs
         from unittest.mock import patch
         def candidate(messages, timeout):

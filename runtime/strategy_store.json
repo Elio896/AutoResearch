@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "active_id": "strategy_002",
+  "versions": [
+    {
+      "strategy_id": "strategy_001",
+      "parent_id": null,
+      "status": "retired",
+      "changes": {
+        "classifier_prompt": "按类别分布选择指标；不平衡时用少数类 F1。",
+        "planning_prompt": "先看缺失与唯一值，再选基线模型。",
+        "candidate_selection_rules": [
+          {
+            "when": "imbalanced",
+            "prefer": "class_weight"
+          }
+        ]
+      },
+      "reason": "当前系统硬编码行为",
+      "evidence_run_ids": [],
+      "created_at": 1794632708.6674948,
+      "created_by": "system",
+      "config_digest": "5a8e74ffdb4075fe"
+    },
+    {
+      "strategy_id": "strategy_002",
+      "parent_id": "strategy_001",
+      "status": "active",
+      "changes": {
+        "classifier_prompt": "按类别分布选择指标；不平衡时用少数类 F1。",
+        "planning_prompt": "先查重：上一轮提过的方案不要再提；再看事后字段与 ID 列。",
+        "candidate_selection_rules": [
+          {
+            "when": "imbalanced",
+            "prefer": "class_weight"
+          }
+        ]
+      },
+      "patch": {
+        "planning_prompt": "先查重：上一轮提过的方案不要再提；再看事后字段与 ID 列。"
+      },
+      "reason": "失败证据显示重复提案集中在同一模型族，规划里没有查重步骤",
+      "evidence_run_ids": [
+        "run_stuck"
+      ],
+      "hypothesis": {
+        "what": "规划里加查重与排雷",
+        "why": "重复提案都发生在没有查重的轮次",
+        "expected_improvement": "重复率下降，合法输出率不降",
+        "falsifier": "独立任务上重复率不降反升",
+        "side_effects": "单次运行多一次扫描，耗时略增"
+      },
+      "target_failure_types": [],
+      "created_at": 1794632708.6778293,
+      "created_by": "deepseek",
+      "config_digest": "e9393f6a9624fce1"
+    },
+    {
+      "strategy_id": "strategy_003",
+      "parent_id": "strategy_001",
+      "status": "candidate",
+      "changes": {
+        "classifier_prompt": "按类别分布选择指标；不平衡时用少数类 F1。",
+        "planning_prompt": "随便再试一次就好。",
+        "candidate_selection_rules": [
+          {
+            "when": "imbalanced",
+            "prefer": "class_weight"
+          }
+        ]
+      },
+      "patch": {
+        "planning_prompt": "随便再试一次就好。"
+      },
+      "reason": "一个不解决重复问题的候选（用来展示拒绝路径）",
+      "evidence_run_ids": [
+        "run_stuck"
+      ],
+      "hypothesis": {
+        "what": "换个说法",
+        "why": "没想清楚",
+        "expected_improvement": "未知",
+        "falsifier": "重复率不降",
+        "side_effects": "无"
+      },
+      "target_failure_types": [],
+      "created_at": 1794632708.6881833,
+      "created_by": "deepseek",
+      "config_digest": "5aa9c964b52d1858"
+    }
+  ],
+  "events": [
+    {
+      "type": "bootstrap",
+      "strategy_id": "strategy_001",
+      "at": 1794632708.6675699,
+      "by": "system",
+      "reason": "当前系统硬编码行为"
+    },
+    {
+      "type": "propose",
+      "strategy_id": "strategy_002",
+      "parent_id": "strategy_001",
+      "at": 1794632708.6779003,
+      "by": "deepseek",
+      "reason": "失败证据显示重复提案集中在同一模型族，规划里没有查重步骤",
+      "evidence_run_ids": [
+        "run_stuck"
+      ],
+      "target_failure_types": []
+    },
+    {
+      "type": "propose",
+      "strategy_id": "strategy_003",
+      "parent_id": "strategy_001",
+      "at": 1794632708.6882088,
+      "by": "deepseek",
+      "reason": "一个不解决重复问题的候选（用来展示拒绝路径）",
+      "evidence_run_ids": [
+        "run_stuck"
+      ],
+      "target_failure_types": []
+    },
+    {
+      "type": "decision_keep",
+      "strategy_id": "strategy_002",
+      "at": 1794632712.8970504,
+      "source": "jev_unavailable",
+      "reason": "Jev 不可用，保持旧策略（不伪造决定）",
+      "evidence": {
+        "checks": {
+          "eval_verdict_upgrade": true,
+          "min_tasks": true,
+          "metrics_available": true,
+          "legal_output_rate": true,
+          "duplicate_rate": true,
+          "mean_best_score": true,
+          "calls": true,
+          "demonstrated_improvement": true
+        },
+        "request_state": "候选策略 strategy_002 想替换当前正式策略。\n改动：[{\"field\": \"planning_prompt\", \"from\": \"先看缺失与唯一值，再选基线模型。\", \"to\": \"先查重：上一轮提过的方案不要再提；再看事后字段与 ID 列。\"}]\n理由：失败证据显示重复提案集中在同一模型族，规划里没有查重步骤\n假设：{\"what\": \"规划里加查重与排雷\", \"why\": \"重复提案都发生在没有查重的轮次\", \"expected_improvement\": \"重复率下降，合法输出率不降\", \"falsifier\": \"独立任务上重复率不降反升\", \"side_effects\": \"单次运行多一次扫描，耗时略增\"}\n对照证据：旧 legal_output_rate=1.0 duplicate_rate=0.5 mean_best_score=0.6953；新 legal_output_rate=1.0 duplicate_rate=0.0 mean_best_score=0.7135\n评估结论：upgrade（全部条件通过）"
+      }
+    },
+    {
+      "type": "activate",
+      "strategy_id": "strategy_002",
+      "previous_id": "strategy_001",
+      "at": 1794632712.9128263,
+      "by": "seed-demo-simulated",
+      "reason": "代码检查通过 + Jev 选择升级",
+      "checks": {
+        "eval_verdict_upgrade": true,
+        "min_tasks": true,
+        "metrics_available": true,
+        "legal_output_rate": true,
+        "duplicate_rate": true,
+        "mean_best_score": true,
+        "calls": true,
+        "demonstrated_improvement": true
+      },
+      "jev": {
+        "decision": "upgrade",
+        "source": "jev",
+        "model": "simulated-jev",
+        "answers": {
+          "strategy_decision": "upgrade"
+        }
+      }
+    },
+    {
+      "type": "decision_keep",
+      "strategy_id": "strategy_003",
+      "at": 1794632712.9296362,
+      "source": "code",
+      "reason": "对照评估结论是 keep，不是 upgrade；demonstrated_improvement 未通过",
+      "evidence": {
+        "checks": {
+          "eval_verdict_upgrade": false,
+          "min_tasks": true,
+          "metrics_available": true,
+          "legal_output_rate": true,
+          "duplicate_rate": true,
+          "mean_best_score": true,
+          "calls": true,
+          "demonstrated_improvement": false
+        },
+        "problems": [
+          "对照评估结论是 keep，不是 upgrade",
+          "demonstrated_improvement 未通过"
+        ]
+      }
+    }
+  ]
+}

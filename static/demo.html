@@ -139,6 +139,7 @@
     <div class="think">
       <div class="who" id="think-who">Tongyi Qianwen<span id="think-src"></span></div>
       <div id="think-body"></div>
+      <div class="hint hidden" id="model-usage" style="font-size:12px;margin-top:8px"></div>
     </div>
     <div id="think-split" class="hidden" style="margin-top:16px;display:grid;
          grid-template-columns:1fr 1fr;gap:14px"></div>
@@ -147,6 +148,8 @@
     <div id="op-plan" class="hidden" style="margin-top:16px"></div>
     <div id="op-evidence" class="hidden" style="margin-top:10px;display:flex;flex-direction:column;gap:10px"></div>
     <div id="op-reading" class="hidden" style="margin-top:14px"></div>
+    <div id="op-checks" class="hidden" style="margin-top:14px"></div>
+    <div id="op-handoff" class="hidden" style="margin-top:10px"></div>
 
     <div class="why" id="think-why" style="margin-top:14px"></div>
   </section>
@@ -263,6 +266,18 @@
     <h2>研究过程</h2>
     <div class="log" id="log"></div>
   </section>
+
+  <!-- 策略进化记录：只显示库里真实发生过的，没发生就写没发生 -->
+  <section class="card" id="strategy-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h2 style="margin:0">策略进化记录</h2>
+      <button id="strategy-refresh" class="secondary" type="button">刷新</button>
+    </div>
+    <div id="strategy-note" class="hint" style="margin-top:8px">正在读取策略库…</div>
+    <div id="strategy-active" style="margin-top:14px"></div>
+    <div id="strategy-failures" style="margin-top:16px"></div>
+    <div id="strategy-events" style="margin-top:16px"></div>
+  </section>
 </div>
 
 <dialog id="key-dialog">
@@ -347,6 +362,12 @@ function renderQwenEvidence(plan, ops, reading) {
 
   if (reading && (reading.raw || reading.error)) {
     rdEl.classList.remove('hidden');
+    if (reading.attribution === 'none' || (!reading.raw && reading.error)) {
+      // 调用失败不是「读法」，别摆进模型名下
+      rdEl.innerHTML = `<div class="hint" style="font-size:12px;color:#b45309">
+        这一轮没读到东西：${escapeHtml(reading.error || '没有响应')}。</div>`;
+      return;
+    }
     const badge = reading.format_ok === false
       ? ' · <span style="color:#b91c1c">格式未通过校验（它仍然用了 JSON 壳）</span>' : '';
     const unwrapped = reading.unwrapped
@@ -368,6 +389,117 @@ function renderQwenEvidence(plan, ops, reading) {
   }
 }
 
+
+// 验证与转交：验证是代码跑的，转交只是分类结果（不是预算授权）
+function renderVerification(checks, handoff) {
+  const box = $('op-checks'), ho = $('op-handoff');
+  if (!box || !ho) return;
+  if (!checks || !checks.length) {
+    box.classList.add('hidden');
+  } else {
+    box.classList.remove('hidden');
+    box.innerHTML = `<div class="hint" style="font-size:12px;margin-bottom:6px">
+        验证（代码执行，不是模型自述）</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${checks.map((c) => `
+        <span style="font-size:12px;border:1px solid ${c.passed ? '#b6e0c2' : '#f0c060'};
+              background:${c.passed ? '#f2fbf4' : '#fffbeb'};border-radius:999px;padding:3px 10px">
+          ${c.passed ? '✓' : '✗'} ${escapeHtml(c.check)}${c.detail ? ' · ' + escapeHtml(c.detail) : ''}</span>`).join('')}
+      </div>`;
+  }
+  if (!handoff) { ho.classList.add('hidden'); return; }
+  ho.classList.remove('hidden');
+  ho.innerHTML = `<div class="hint" style="font-size:12px">是否转交：<b>${handoff.needs_specialist ? '是' : '否'}</b>
+    · 交给 <b>${escapeHtml(handoff.to)}</b> ${handoff.count} 个问题
+    · <span style="color:#6b6560">${escapeHtml(handoff.note || '')}</span></div>`;
+}
+
+// 策略进化记录：只显示库里真实发生过的
+function renderStrategy(state) {
+  const note = $('strategy-note'), activeBox = $('strategy-active'), eventBox = $('strategy-events');
+  if (!state || !state.active) {
+    note.textContent = (state && state.note) || '还没有策略库（没有发生过任何策略事件）';
+    activeBox.innerHTML = '';
+    eventBox.innerHTML = '';
+    return;
+  }
+  const current = state.active;
+  note.innerHTML = `当前正式策略 <b>${escapeHtml(current.strategy_id)}</b>`
+    + ` · 状态 ${escapeHtml(current.status)} · digest ${escapeHtml(current.config_digest || '')}`;
+
+  const versions = state.versions || [];
+  activeBox.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${versions.map((v) => `<span style="font-size:12px;border:1px solid ${v.status === 'active' ? '#15803d' : 'var(--line)'};
+            border-radius:8px;padding:4px 10px">${escapeHtml(v.strategy_id)} · ${escapeHtml(v.status)}`
+            + `${v.simulated ? ' · <span style="color:#b45309">模拟</span>' : ''}</span>`).join('')}
+    </div>
+    <div style="margin-top:10px;font-size:12px"><b>当前内容</b>
+      <pre style="white-space:pre-wrap;margin:6px 0 0;font-size:12px;background:var(--bg);
+           border:1px solid var(--line);border-radius:8px;padding:10px">${escapeHtml(JSON.stringify(current.changes, null, 1))}</pre>
+    </div>
+    <div style="margin-top:12px;font-size:12px"><b>候选与当前版本的差异</b>
+      ${Object.keys(state.diffs || {}).length
+        ? Object.entries(state.diffs).map(([id, d]) => `
+          <div style="margin-top:6px">
+            <b>${escapeHtml(id)}</b> 改了 ${escapeHtml((d.changed_fields || []).join(', ') || '无')}
+            ${(d.changes || []).map((c) => `<div class="hint" style="margin-top:2px">
+              ${escapeHtml(c.field)}：${escapeHtml(String(c.from).slice(0, 50))} → ${escapeHtml(String(c.to).slice(0, 70))}</div>`).join('')}
+          </div>`).join('')
+        : '<div class="hint" style="margin-top:4px">没有别的版本可比较</div>'}
+    </div>`;
+
+  const label = {activate: '已升级', rollback: '已回滚', decision_keep: '已拒绝/保留',
+                 decision_defer: '待评估', bootstrap: '建立基线', propose: '提出候选',
+                 reject: '已拒绝'};
+  const events = (state.events || []).slice().reverse();
+  eventBox.innerHTML = `<div class="hint" style="font-size:12px;margin-bottom:6px">
+      事件（库里的真实记录，最近 40 条，倒序）</div>`
+    + (events.length ? events.map((e) => `
+      <div style="border-bottom:1px dashed var(--line);padding:6px 0;font-size:12px">
+        <b>${escapeHtml(label[e.type] || e.type)}</b> · ${escapeHtml(e.strategy_id || '')}
+        ${e.from ? `（来自 ${escapeHtml(e.from)}）` : ''}
+        ${e.triggers ? ` · 触发 ${escapeHtml((e.triggers || []).join(', '))}` : ''}
+        ${e.source ? ` · 来源 ${escapeHtml(e.source)}` : ''}
+        ${e.by ? ` · by ${escapeHtml(e.by)}` : ''}
+        ${e.reason ? `<div class="hint" style="margin-top:2px">${escapeHtml(String(e.reason).slice(0, 180))}</div>` : ''}
+      </div>`).join('') : '<div class="empty">还没有事件</div>');
+}
+
+async function loadStrategy() {
+  try {
+    const response = await fetch('/strategy/state');
+    renderStrategy(await response.json());
+  } catch (error) {
+    $('strategy-note').textContent = '读取策略库失败：' + error.message;
+  }
+  try {
+    const failures = await (await fetch('/strategy/failures')).json();
+    renderFailures(failures);
+  } catch (error) {
+    const box = $('strategy-failures');
+    if (box) box.innerHTML = `<div class="hint" style="color:#b45309">读取失败模式失败：${escapeHtml(error.message)}</div>`;
+  }
+}
+
+// 失败模式：来自 failure_modes 的真检测结果，每条都能追到事件
+function renderFailures(payload) {
+  const box = $('strategy-failures');
+  if (!box) return;
+  const records = (payload && payload.records) || [];
+  if (!records.length) {
+    box.innerHTML = `<div class="hint" style="font-size:12px">失败模式：${escapeHtml((payload && payload.note) || '没有检测结果')}</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="hint" style="font-size:12px;margin-bottom:6px">
+      失败模式（最近一次检测，${escapeHtml((payload && payload.verdict) || '')}，来源 ${escapeHtml((payload && payload.source) || '')}）</div>`
+    + records.map((r) => `
+      <div style="border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:8px">
+        <div style="font-size:13px"><b>${escapeHtml(r.failure_type)}</b>
+          <span class="hint">· ${escapeHtml((r.event_refs || []).join(', '))}</span></div>
+        <div class="hint" style="font-size:12px;margin-top:4px">
+          ${escapeHtml(JSON.stringify(r.measurements || {}))}</div>
+      </div>`).join('');
+}
 
 // ---------- 队列 ----------
 const queue = [];          // {name, csv, state, result}
@@ -458,12 +590,24 @@ async function analyzeItem(item) {
   const thought = data.thought || {};
   const attribution = thought.attribution || (thought.source === 'local_model' ? 'model' : 'program');
 
-  // 署名只写「来源」，不替模型认领它没说过的话
-  $('think-who').innerHTML = (attribution === 'model' ? 'Tongyi Qianwen' : '程序规则')
-    + '<span id="think-src"></span>';
+  // 署名只写「来源」，不替模型认领它没说过的话；API 与本地必须分开标
+  const modelSource = data.model_source
+    || (attribution === 'model' ? 'local_model' : 'rules');
+  const whoLabel = modelSource === 'api_model' ? '轻量模型 API'
+    : (modelSource === 'local_model' ? '本地千问' : '程序规则');
+  $('think-who').innerHTML = whoLabel + '<span id="think-src"></span>';
   $('think-src').textContent = attribution === 'model'
-    ? ` · 模型原文${thought.model ? '（' + thought.model + '）' : ''}`
+    ? ` · ${(data.model_descriptor || {}).model || thought.model || ''} · 模型原文`
     : ' · 非模型输出';
+
+  const usage = data.model_usage;
+  const usageEl = $('model-usage');
+  if (usage && usage.calls && usageEl) {
+    usageEl.classList.remove('hidden');
+    usageEl.innerHTML = `本次模型调用 <b>${usage.calls}</b> 次 · token 输入 ${usage.prompt_tokens} / 输出 ${usage.completion_tokens} · 费用：${(usage.cost_cny === null || usage.cost_cny === undefined) ? '按 provider 账单结算，<b>未取到账单前不记 0</b>' : usage.cost_cny + ' 元'}`;
+  } else if (usageEl) {
+    usageEl.classList.add('hidden');
+  }
 
   const notes = [];
   if (attribution === 'program') {
@@ -526,6 +670,7 @@ async function analyzeItem(item) {
 
   renderResearchHypotheses(data.research);
   renderQwenEvidence(data.plan, data.evidence_ops, data.reading);
+  renderVerification(data.verification, data.handoff);
 
   showPanel('approval');
   $('f-metric').value = data.suggested.metric;
@@ -1136,6 +1281,11 @@ drawChart([], null);
     }
   }, 300);
 })();
+
+// 策略进化记录：进页面读一次，按钮可手动刷新
+loadStrategy();
+const strategyRefresh = $('strategy-refresh');
+if (strategyRefresh) strategyRefresh.addEventListener('click', loadStrategy);
 </script>
 </body>
 </html>

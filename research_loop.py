@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import hashlib
 import importlib.metadata
 import platform
@@ -107,19 +108,22 @@ class ResearchLoop:
                    for e in self._experiments][-5:]
         try:
             # cloud_scientist 是 Scientist 对象，不是函数——用它的 propose
-            proposal = self.cloud_scientist.propose(history, profile)
+            self._spend(cloud_calls=1)
+            proposal = self.cloud_scientist.propose(
+                history, profile, timeout=min(45.0, max(0.1, self.budget.max_seconds - (time.monotonic() - started))))
         except Exception as exc:                    # noqa: BLE001
             self._record('cloud_failed', executor=executor, reason=str(exc)[:160])
             return False
 
-        self.used['cloud_calls'] = used_cloud + 1
         self._record('cloud_proposal', executor=executor, route=route_result,
                      proposal=proposal if isinstance(proposal, dict) else {'raw': str(proposal)[:400]})
         # 云端提案交给同一个执行器去跑（Experimenter/Reviewer 不看提案是谁给的）
-        try:
-            self.scientist.pending = proposal       # 让下一轮直接用这份
-        except Exception:                            # noqa: BLE001
-            pass
+        if self.used['experiments'] >= self.budget.max_experiments:
+            return False
+        result = self._run_experiment(proposal)
+        if result is None:
+            return False
+        self._review_cloud_result(result, proposal, best, profile, started)
         return True
     def __init__(self, session, proposer=None, budget: Budget | None = None,
                  allowed: dict | None = None, patience: int = 2, emit=None,
@@ -128,7 +132,8 @@ class ResearchLoop:
                  small_proposer=None, cloud_proposer=None, jev_gate=None,
                  max_cloud_calls: int = 0, qwen_router=None, jev_harness=None,
                  use_signal_router: bool = False, use_task_router: bool = False,
-                 use_mde: bool = False):
+                 use_mde: bool = False, strategy_store=None, strategy_id: str | None = None,
+                 correction_store=None, correction_snapshot=None):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -165,6 +170,14 @@ class ResearchLoop:
         self._last_gain = None
         self.blueteam = BlueTeam()
         self.run_id = run_id or uuid.uuid4().hex
+        # 策略版本：开跑前钉死一份快照，运行期间库里怎么改都不影响这次运行
+        self.strategy_store = strategy_store
+        self.strategy = None
+        if strategy_store is not None:
+            self.strategy = strategy_store.pin(strategy_id)
+            for scientist in (self.scientist, self.cloud_scientist):
+                if scientist is not None:
+                    scientist.strategy = self.strategy['changes']
         self.trajectory = TrajectoryWriter(
             trajectory_dir or Path('artifacts') / 'trajectory' / self.run_id,
             self.run_id,
@@ -172,14 +185,27 @@ class ResearchLoop:
         self._best_round_id = None
         self.used = {'experiments': 0, 'seconds': 0.0, 'local_calls': 0,
                      'cloud_calls': 0, 'local_tokens': 0}
+        self.correction_store = correction_store
+        self.correction_guard = None
+        if correction_store is not None or correction_snapshot is not None:
+            from corrections import CorrectionGuard
+            snapshot = correction_snapshot or correction_store.snapshot(getattr(session, 'dataset_sha256', None))
+            self.correction_guard = CorrectionGuard(snapshot)
+            for scientist in (self.scientist, self.cloud_scientist):
+                if scientist is not None:
+                    scientist.corrections = self.correction_guard.instructions()
+            if self.correction_guard.no_paid_calls:
+                self.cloud_scientist = self.jev_gate = self.qwen_router = self.redteam = None
+                if getattr(proposer, 'source', None) != 'deterministic_rule':
+                    self.scientist = None
 
     # ---------- 事件 ----------
     def _record(self, kind, **values):
-        event = {'event': kind, 't': round(time.time(), 3), **values}
+        event = {'event': kind, 't': round(time.time(), 3), **copy.deepcopy(values)}
         self.events.append(event)
         if self.emit:
             try:
-                self.emit(event)
+                self.emit(copy.deepcopy(event))
             except Exception:
                 pass                        # UI 挂了不影响研究
 
@@ -198,6 +224,13 @@ class ResearchLoop:
 
         try:
             seeds = getattr(self, 'mde_seeds', (42, 7, 2026, 1, 13))
+            needed = 2 * len(seeds)
+            if self.used['experiments'] + needed > self.budget.max_experiments:
+                self._record('mde_verify_skipped', reason='verification_fit_budget', required=needed)
+                return {'verdict': 'flat', 'delta': 0.0, 'reverted': True,
+                        'suspicious': False, 'mde_overridden': True,
+                        'why': 'Insufficient verification budget; keep incumbent.'}
+            self._spend(experiments=needed)
             cand_multi = self.session.run_multi_seed(
                 candidate.get('model'), candidate.get('parameters') or {}, seeds=seeds)
             best_multi = self.session.run_multi_seed(
@@ -237,6 +270,13 @@ class ResearchLoop:
     def run(self) -> dict:
         started = time.monotonic()
 
+        # 0) 策略版本：先记下这次用的是哪一版，跑完再自查有没有被换掉
+        if self.strategy is not None:
+            self._record('strategy_pinned',
+                         strategy_id=self.strategy['strategy_id'],
+                         parent_id=self.strategy.get('parent_id'),
+                         config_digest=self.strategy['config_digest'])
+
         # 1) Analyst
         context = self.session.planning_context() if hasattr(self.session, 'planning_context') else {}
         profile = self.analyst.profile(context)
@@ -245,6 +285,14 @@ class ResearchLoop:
 
         # 2) Manager 定 baseline（不平衡时直接 balanced，不让模型猜）
         plan = self.manager.initial_plan(profile)
+        if self.correction_guard:
+            allowed = self.correction_guard.allowed_models
+            if not allowed:
+                return self._finish('failed', 'conflicting_user_constraints', started)
+            if plan['model'] not in allowed:
+                plan = {'model': allowed[0], 'parameters': {}}
+            self._record('corrections_pinned', digest=self.correction_guard.snapshot['digest'],
+                         rules=self.correction_guard.instructions())
         self._record('manager_plan', plan=plan, split=self.manager.split_budget(),
                      budget=self.budget.snapshot(self.used), tokens={'prompt': 0, 'completion': 0})
 
@@ -276,6 +324,8 @@ class ResearchLoop:
         if best is None:
             return self._finish('failed', 'baseline_failed', started)
         self._persist_round(best, plan, started, baseline_round=True)
+        self._accepted_best = best
+        feedback = ''
 
         no_improvement = 0
         stop_reason = ''
@@ -296,16 +346,17 @@ class ResearchLoop:
                 if reason == 'validation_plateau' and self.cloud_scientist is not None:
                     self._signal_wants_continue = False
                     outcome = self._try_escalate(best, profile, started, no_improvement)
-                    if outcome in ('escalated', 'continue') or self._signal_wants_continue:
+                    if outcome is True or outcome in ('escalated', 'continue') or self._signal_wants_continue:
                         # 信号路由说「本地还有空间」时，不该被 Manager 的停止判据直接截断
                         no_improvement = 0
+                        best = self._accepted_best
                         continue
                 stop_reason = reason
                 break
 
             # 千问能不能解这活？——用任务判别器决定这一轮的提案由谁出
             # 判据来自数据画像和历史表现，不是模型自评
-            if self.task_router is not None:
+            if self.task_router:
                 try:
                     from task_router import route as _route
                     complexity = _complexity(profile, self._experiments)
@@ -317,6 +368,7 @@ class ResearchLoop:
                 if route_result is not None and route_result.get('executor') in ('jev', 'deepseek'):
                     # 千问解不了：这一轮交给云端（决策类给 JEV、思考类给 DeepSeek）
                     if self._try_cloud_direct(route_result, best, profile, started):
+                        best = self._accepted_best
                         no_improvement = 0
                         continue
 
@@ -332,12 +384,14 @@ class ResearchLoop:
             self._spend(local_calls=1)
             try:
                 proposal = self.scientist.propose(history, profile, advice=advice,
+                                                  feedback=getattr(self, '_correction_feedback', '') or feedback,
                                                   timeout=min(45.0, max(1.0, remaining)))
             except ValueError as exc:
                 # 方案不合法也要记成本：这次调用真的发生了
                 self._spend(local_tokens=sum(self.scientist.last_tokens.values()))
                 self._record('scientist_rejected', reason=str(exc),
                              tokens=self.scientist.last_tokens.copy())
+                feedback = str(exc)[:300]
                 # 注意：**不**增加 no_improvement。
                 # 模型输出格式不对 ≠ 研究方向停滞，混在一起会让 patience 提前触发。
                 # 防死循环靠 local_calls 预算，不靠 patience。
@@ -351,6 +405,14 @@ class ResearchLoop:
             self._record('scientist_proposal', proposal=proposal,
                          tokens=self.scientist.last_tokens.copy(),
                          budget=self.budget.snapshot(self.used))
+
+            if self.strategy and any(r.get('kind') == 'reject_duplicates' for r in
+                                     self.strategy['changes'].get('candidate_selection_rules', [])):
+                key = lambda p: canonical_json({k: p.get(k, {}) for k in ('model', 'parameters', 'preprocessing')})
+                if any(key(proposal) == key(e) for e in self._experiments):
+                    feedback = 'Duplicate rejected before training. Propose a different model or preprocessing.'
+                    self._record('proposal_duplicate', proposal=proposal, reason=feedback)
+                    continue
 
             # Experimenter
             result = self._run_experiment(proposal)
@@ -370,22 +432,26 @@ class ResearchLoop:
             self._record('reviewer_verdict', verdict=verdict,
                          budget=self.budget.snapshot(self.used),
                          tokens=self.scientist.last_tokens.copy())
+            feedback = json.dumps({'verdict': verdict['verdict'], 'delta': verdict['delta'],
+                                   'class_metrics': result.get('validation_class_metrics', [])}, ensure_ascii=False)
             self._persist_round(result, proposal, started, verdict=verdict,
                                 baseline=best)
 
             accepted = verdict['verdict'] in ('improved', 'kept') and not verdict.get('reverted', False)
             # EvoUndo：把这次实验登记成一个版本
+            accepted_version_id = self.chain.current_id
             version = self.chain.add(
-                proposal={'model': result.get('model'), 'parameters': result.get('parameters') or {}},
+                proposal={k: result[k] for k in ('model', 'parameters', 'preprocessing') if k in result},
                 score=float(result.get('validation_score', result.get('validation_f1', 0.0))),
                 note=verdict['verdict'])
             if accepted:
                 best, no_improvement = result, 0
+                self._accepted_best = best
                 self._best_round_id = self.trajectory.last_round_id or self._best_round_id
             else:
                 no_improvement += 1
                 # 退步就真的回到最优那一代（不重训、不删版本）
-                target = self.chain.best()
+                target = self.chain.get(accepted_version_id)
                 if target is not None and target.version_id != self.chain.current_id:
                     self.chain.rollback(target.version_id, reason=f"{verdict['verdict']}: delta={verdict['delta']}")
                     self._record('rollback', from_version=version.version_id,
@@ -393,7 +459,7 @@ class ResearchLoop:
                                  reason=verdict['verdict'], delta=verdict['delta'])
 
             # 可疑的"大幅提升"：不采信，但要留下证据
-            if verdict['suspicious']:
+            if verdict.get('suspicious'):
                 self._record('reviewer_flag', reason='suspicious_improvement',
                              score=verdict['candidate_score'])
 
@@ -521,17 +587,24 @@ class ResearchLoop:
             return False
 
         verdict = self.reviewer.judge(result, best, profile)
+        return self._review_cloud_result(result, proposal, best, profile, started, verdict)
+
+    def _review_cloud_result(self, result, proposal, best, profile, started, verdict=None):
+        verdict = verdict or self.reviewer.judge(result, best, profile)
+        self._persist_round(result, proposal, started, verdict=verdict, baseline=best)
         self._record('reviewer_verdict', verdict=verdict,
                      budget=self.budget.snapshot(self.used), source='cloud')
+        accepted_version_id = self.chain.current_id
         version = self.chain.add(
-            proposal={'model': result.get('model'), 'parameters': result.get('parameters') or {}},
+            proposal={k: result[k] for k in ('model', 'parameters', 'preprocessing') if k in result},
             score=float(result.get('validation_score', result.get('validation_f1', 0.0))),
             note='cloud:' + verdict['verdict'])
         if verdict['verdict'] in ('improved', 'kept') and not verdict.get('reverted', False):
+            self._accepted_best = result
             self._record('escalation_success', from_score=verdict['best_score'],
                          to_score=verdict['candidate_score'], delta=verdict['delta'])
             return True
-        target = self.chain.best()
+        target = self.chain.get(accepted_version_id)
         if target is not None and target.version_id != self.chain.current_id:
             self.chain.rollback(target.version_id, reason='cloud_attempt_regressed')
             self._record('rollback', from_version=version.version_id,
@@ -542,11 +615,19 @@ class ResearchLoop:
         """红队质疑 → 蓝队用代码检验 → 成立就回滚。全程不让模型判好坏。"""
         if self.redteam is None or best is None:
             return
+        if (self.used['local_calls'] >= self.budget.max_local_calls or
+                self.used['experiments'] >= self.budget.max_experiments or
+                self.used['local_tokens'] >= self.budget.max_local_tokens or
+                self.used['seconds'] >= self.budget.max_seconds):
+            self._record('redteam_skipped', reason='budget_exhausted')
+            return
         history = [{'model': r.get('model'), 'score': r.get('validation_score', r.get('validation_f1'))}
                    for r in getattr(self, '_results', [])[-4:]]
         remaining = max(5.0, self.budget.max_seconds - self.used['seconds'])
         try:
+            self._spend(local_calls=1)
             claims, rejected = self.redteam.propose(profile, best, history, timeout=min(45.0, remaining))
+            self._spend(local_tokens=sum(self.redteam.last_tokens.values()))
         except Exception as exc:                        # noqa: BLE001
             self._record('redteam_error', reason=str(exc)[:200])
             return
@@ -565,6 +646,11 @@ class ResearchLoop:
 
         verdicts = []
         for claim in claims:
+            fits = (claim.get('check_params') or {}).get('n_seeds', 3) if claim.get('check_kind') == 'seed_stability' else 1
+            if self.used['experiments'] + fits > self.budget.max_experiments:
+                self._record('blueteam_skipped', reason='verification_fit_budget', required=fits)
+                continue
+            self._spend(experiments=fits)
             self._record('redteam_claim', **claim)
             verdict = self.blueteam.verify(claim, session)
             verdicts.append(verdict)
@@ -598,8 +684,29 @@ class ResearchLoop:
         return [e for e in getattr(self, '_results', [])]
 
     def _run_experiment(self, proposal: dict) -> dict | None:
+        if self.correction_guard:
+            from corrections import CorrectionViolation
+            try:
+                prepared, applied = self.correction_guard.prepare(proposal, self._experiments)
+            except CorrectionViolation as exc:
+                self._correction_feedback = str(exc)
+                self._record('correction_blocked', rule_id=exc.rule_id, constraint=exc.kind, reason=str(exc))
+                if self.correction_store:
+                    self.correction_store.record(exc.rule_id, 'blocked', self.run_id,
+                                                 constraint=exc.kind, model=proposal.get('model'))
+                return None
+            proposal.clear()
+            proposal.update(prepared)
+            for rule_id in applied:
+                self._record('correction_applied', rule_id=rule_id, proposal=prepared)
+                if self.correction_store:
+                    self.correction_store.record(rule_id, 'auto_repaired', self.run_id)
+        if self.used['experiments'] >= self.budget.max_experiments:
+            self._record('experiment_skipped', reason='fit_budget')
+            return None
         started = time.monotonic()
         self._round_started_at = datetime.now(timezone.utc)
+        self._spend(experiments=1)
         try:
             result = self.experimenter.run(proposal)
         except ValueError as exc:
@@ -611,11 +718,12 @@ class ResearchLoop:
         if not hasattr(self, '_results'):
             self._results = []
         self._results.append(result)
-        self._spend(experiments=1, seconds=time.monotonic() - started)
+        self._spend(seconds=time.monotonic() - started)
         self._record('experiment', model=result.get('model'),
                      parameters=result.get('parameters'),
                      score=result.get('validation_score', result.get('validation_f1')),
                      duration=round(time.monotonic() - started, 3))
+        self._correction_feedback = ''
         return result
 
     def _persist_round(self, result: dict, proposal: dict, run_started: float,
@@ -920,15 +1028,19 @@ class ResearchLoop:
 
     def _finish(self, status: str, reason: str, started: float) -> dict:
         results = getattr(self, '_results', [])
-        best = max(results, key=lambda r: r.get('validation_score', r.get('validation_f1', 0))) if results else None
+        best = getattr(self, '_accepted_best', None)
+        if best is None and results:
+            best = results[0]
         summary = {
             'status': status,
             'stop_reason': reason,
             'elapsed_seconds': round(time.monotonic() - started, 2),
             'experiments': len(results),
+            'training_fits_charged': self.used['experiments'],
             'best_score': best.get('validation_score', best.get('validation_f1')) if best else None,
             'best_model': best.get('model') if best else None,
             'best_parameters': best.get('parameters') if best else None,
+            'best_preprocessing': best.get('preprocessing', {}) if best else None,
             'local_calls': self.used['local_calls'],
             'cloud_calls': self.used['cloud_calls'],
             'local_tokens': self.used['local_tokens'],
@@ -936,6 +1048,23 @@ class ResearchLoop:
             'trajectory_run_id': self.run_id,
             'trajectory_dir': str(self.trajectory.run_dir.resolve()),
         }
+        if self.correction_guard:
+            summary['user_corrections'] = {
+                'digest': self.correction_guard.snapshot['digest'],
+                'matched_rules': [r['id'] for r in self.correction_guard.rules],
+                'blocked': sum(e['event'] == 'correction_blocked' for e in self.events),
+                'auto_repaired': sum(e['event'] == 'correction_applied' for e in self.events),
+            }
+        # 策略版本自查：这次运行固定用的那一版，跑完还是不是它
+        if self.strategy is not None:
+            intact = True
+            if self.strategy_store is not None:
+                intact = self.strategy_store.verify_pin(self.strategy)
+            summary['strategy_id'] = self.strategy['strategy_id']
+            summary['strategy_config_digest'] = self.strategy['config_digest']
+            summary['strategy_pin_intact'] = intact
+            self._record('strategy_pin_verified',
+                         strategy_id=self.strategy['strategy_id'], intact=intact)
         # EvoUndo：版本树落盘（JSON 给程序看，HTML 给人看）
         if getattr(self, 'chain', None) is not None and self.chain.versions:
             self.chain.run_id = self.chain.run_id or self.run_id

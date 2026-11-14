@@ -106,6 +106,8 @@ class Manager:
             return True, 'time_budget'
         if snap['local_calls_left'] <= 0:
             return True, 'local_call_budget'
+        if snap['local_tokens_left'] <= 0:
+            return True, 'token_budget'
         if state.get('no_improvement', 0) >= self.patience:
             return True, 'validation_plateau'
         return False, ''
@@ -150,6 +152,8 @@ class Scientist:
         self.max_output_tokens = max_output_tokens
         # 最近一次调用的 token 消耗（来源：响应里的 prompt_eval_count / eval_count）
         self.last_tokens = {'prompt': 0, 'completion': 0}
+        self.strategy = {}
+        self.corrections = []
 
     def _allowed_text(self) -> str:
         parts = []
@@ -160,6 +164,7 @@ class Scientist:
 
     def propose(self, history: list, profile: dict, feedback: str = '',
                 advice: list | None = None, timeout: float = 30) -> dict:
+        self.last_tokens = {'prompt': 0, 'completion': 0}
         advice_text = ('\nPrior research experience (advisory only, still needs verification):\n'
                        + '\n'.join(advice)) if advice else ''
         messages = [
@@ -184,14 +189,30 @@ class Scientist:
              f'Last rejection: {feedback or "(none)"}'
              f'{advice_text}'},
         ]
+        messages[0]['content'] += (' Optional preprocessing object: impute=median/mean/most_frequent, '
+                                   'encode=onehot/ordinal, imbalance_strategy=none/class_weight, '
+                                   'add_missing_indicator=true/false. Select from training evidence only.')
+        # A pinned strategy must change the actual model input, not just the run label.
+        if self.strategy:
+            instructions = {k: self.strategy[k] for k in
+                            ('planning_prompt', 'candidate_selection_rules') if k in self.strategy}
+            messages[0]['content'] += '\nPinned research policy: ' + json.dumps(instructions, ensure_ascii=False)
+            if any(r.get('kind') == 'compact_context' for r in self.strategy.get('candidate_selection_rules', [])):
+                messages[1]['content'] = json.dumps({'allowed': self._allowed_text(),
+                    'profile': profile, 'history': history[-3:], 'feedback': feedback[:400],
+                    'advice': (advice or [])[:2]}, ensure_ascii=False, separators=(',', ':'))
+        if self.corrections:
+            messages[0]['content'] += '\nEnforced user constraints: ' + json.dumps(self.corrections)
         response = self.proposer(messages, timeout=timeout)
         # 本地 Ollama 返回 dict（带 prompt_eval_count），云端适配器可能直接回字符串
         if isinstance(response, str):
             response = {'message': {'content': response}}
         # 先记 token：即使解析失败，这次调用的成本也已经发生了。
         self.last_tokens = {
-            'prompt': int(response.get('prompt_eval_count', 0) or 0),
-            'completion': int(response.get('eval_count', 0) or 0),
+            'prompt': int(response.get('prompt_eval_count', 0) or
+                          (getattr(self.proposer, 'last_usage', {}) or {}).get('prompt_tokens', 0)),
+            'completion': int(response.get('eval_count', 0) or
+                              (getattr(self.proposer, 'last_usage', {}) or {}).get('completion_tokens', 0)),
         }
         return self.parse(response)
 
@@ -209,7 +230,7 @@ class Scientist:
         except json.JSONDecodeError:
             raise ValueError('Not valid JSON.') from None
         required = {'model', 'parameters', 'hypothesis', 'expected_direction', 'falsifier'}
-        optional = {'confidence_before'}
+        optional = {'confidence_before', 'preprocessing'}
         allowed_keys = required | optional
         if not isinstance(proposal, dict):
             raise ValueError('Proposal must be a JSON object.')
@@ -264,7 +285,20 @@ class Scientist:
                 raise ValueError(f'{key} must be numeric.')
             if not math.isfinite(value) or not (low <= value <= high):
                 raise ValueError(f'{key} outside [{low}, {high}].')
-        return {
+        preprocessing = proposal.get('preprocessing')
+        if preprocessing is not None:
+            options = {'impute': ('median', 'mean', 'most_frequent'),
+                       'encode': ('onehot', 'ordinal'),
+                       'imbalance_strategy': ('none', 'class_weight'),
+                       'add_missing_indicator': (True, False)}
+            if not isinstance(preprocessing, dict) or set(preprocessing) - set(options):
+                raise ValueError('Unsupported preprocessing fields.')
+            for key, value in preprocessing.items():
+                if key == 'add_missing_indicator' and type(value) is not bool:
+                    raise ValueError('add_missing_indicator must be boolean.')
+                if value not in options[key]:
+                    raise ValueError(f'Unsupported preprocessing value: {key}.')
+        result = {
             'model': model,
             'parameters': params,
             'hypothesis': hypothesis.strip(),
@@ -272,6 +306,9 @@ class Scientist:
             'falsifier': falsifier.strip(),
             'confidence_before': float(confidence) if confidence is not None else None,
         }
+        if preprocessing is not None:
+            result['preprocessing'] = dict(preprocessing)
+        return result
 
 
 # ---------------- Experimenter（执行） ----------------
@@ -285,7 +322,8 @@ class Experimenter:
 
     def run(self, proposal: dict) -> dict:
         # 只把 model/parameters 交给执行器；假设类字段是轨迹用的，执行器不认识。
-        result = self.session.run(model=proposal['model'], parameters=proposal['parameters'])
+        kwargs = {'preprocessing': proposal['preprocessing']} if 'preprocessing' in proposal else {}
+        result = self.session.run(model=proposal['model'], parameters=proposal['parameters'], **kwargs)
         self.count += 1
         result['sequence'] = self.count
         # 把假设一起挂到结果上，方便落轨迹

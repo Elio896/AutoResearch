@@ -18,6 +18,8 @@ class TaskStore:
     def __init__(self, database='artifacts/research.sqlite3'):
         self.database = Path(database).resolve()
         self.database.parent.mkdir(parents=True, exist_ok=True)
+        from corrections import CorrectionStore
+        self.corrections = CorrectionStore(self.database.parent / 'user-corrections.sqlite3')
         with self.connection() as db:
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS tasks (
@@ -173,11 +175,21 @@ class TaskStore:
             current = db.execute('SELECT state,max_experiments FROM tasks WHERE id=?', (task_id,)).fetchone()
             if current['state'] != 'open':
                 raise RuntimeError('Task is not open.')
-            rows = db.execute('SELECT number,status FROM experiments WHERE task_id=?', (task_id,)).fetchall()
+            rows = db.execute('SELECT number,status,result FROM experiments WHERE task_id=?', (task_id,)).fetchall()
             if any(row['status'] == 'running' for row in rows):
                 raise RuntimeError('Task has a running or interrupted experiment; manual recovery required.')
             if len(rows) >= current['max_experiments']:
                 raise RuntimeError('Persistent experiment budget exhausted.')
+            from corrections import CorrectionGuard, CorrectionViolation
+            guard = CorrectionGuard(self.corrections.snapshot(session.dataset_sha256))
+            previous = [json.loads(row['result']) for row in rows if row['status'] == 'success' and row['result']]
+            try:
+                proposal, repaired = guard.prepare(proposal, previous)
+            except CorrectionViolation as exc:
+                self.corrections.record(exc.rule_id, 'blocked', task_id, constraint=exc.kind, model=model)
+                raise RuntimeError(str(exc)) from None
+            for rule_id in repaired:
+                self.corrections.record(rule_id, 'auto_repaired', task_id)
             number = len(rows) + 1
             db.execute('INSERT INTO experiments (task_id,number,proposal,status) VALUES (?,?,?,?)',
                        (task_id, number, json.dumps(proposal, sort_keys=True), 'running'))

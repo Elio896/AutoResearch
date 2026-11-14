@@ -66,7 +66,7 @@ class IntegrityTests(unittest.TestCase):
         否则阈值放宽后每个新数据集都得先人工写 decisions，和"自主"冲突。
         """
         from fastapi.testclient import TestClient
-        from api import create_app
+        from api import create_legacy_app as create_app
         with TestClient(create_app(self.root)) as client:
             response = client.post('/tasks', json={'csv_text': self.fixture.read_text(), 'target': 'target'})
             self.assertEqual(response.status_code, 201)

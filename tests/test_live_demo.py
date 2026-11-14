@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from api import create_app
+from api import create_legacy_app as create_app
 
 
 def _csv() -> str:

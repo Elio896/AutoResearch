@@ -6,7 +6,7 @@ from pathlib import Path
 class APITests(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
-        from api import create_app
+        from api import create_legacy_app as create_app
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.client = TestClient(create_app(Path(self.temp.name)))
