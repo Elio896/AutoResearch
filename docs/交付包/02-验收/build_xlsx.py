@@ -118,9 +118,9 @@ for r in range(4, 8):
 section(ws, 9, "一、三场景成绩（满分 30）")
 header(ws, 10, ["场景", "数据文件", "行数", "正例率", "主指标", "及格线", "优秀线", "实测", "判定", "分"])
 rows = [
-    ["A 干净", "churn_clean.csv", 2000, 0.300, "F1", 0.55, 0.62, None, None, None],
-    ["B 缺失", "readmission_missing.csv", 2400, 0.280, "F1", 0.50, 0.58, None, None, None],
-    ["C 不平衡", "fraud_imbalanced.csv", 8000, 0.040, "F1", 0.34, 0.43, None, None, None],
+    ["A 干净", "churn_clean.csv", 2000, 0.300, "F1", 0.55, 0.62, 0.525, None, None],
+    ["B 缺失", "readmission_missing.csv", 2400, 0.280, "F1", 0.50, 0.58, 0.177, None, None],
+    ["C 不平衡", "fraud_imbalanced.csv", 8000, 0.040, "F1", 0.34, 0.43, 0.275, None, None],
 ]
 body(ws, 11, rows, fills={8}, numfmt={4: "0.0%"})
 for i, r in enumerate(range(11, 14)):
@@ -218,14 +218,22 @@ title(ws, "1 · 效果门槛",
       "及格线不是拍的：对每个数据集跑 4 条候选流水线 × 3 个划分种子 × 5 折，取 F1 最高者作为参考上限，再减安全边际（干净 0.05 / 缺失 0.06 / 不平衡 0.07）。")
 header(ws, 4, ["场景", "数据", "主指标", "朴素基线", "参考上限", "及格线", "优秀线", "实测", "场景得分", "备注"])
 rows = [
-    ["A 干净", "churn_clean", "F1", 0.469, 0.596, 0.55, 0.62, None, None,
-     "朴素 = 逻辑回归 0.5 阈值，accuracy 0.744 看着挺好，F1 只有 0.469"],
-    ["B 缺失", "readmission_missing", "F1", 0.165, 0.555, 0.50, 0.58, None, None,
-     "朴素 = 中位数填补、不加指示变量；加 isna 后 0.443"],
-    ["C 不平衡", "fraud_imbalanced", "F1", 0.241, 0.406, 0.34, 0.43, None, None,
-     "朴素 accuracy 0.962 但召回仅 0.15；泄漏线 0.943"],
+    ["A 干净", "churn_clean", "F1", 0.469, 0.596, 0.55, 0.62, 0.525, None,
+     "实测 0.525 ≈ 朴素基线：当前 executor 只有默认预处理，没有可用提升手段"],
+    ["B 缺失", "readmission_missing", "F1", 0.165, 0.555, 0.50, 0.58, 0.177, None,
+     "实测 0.177 ≈ 朴素 0.165：系统还不能加 isna 指示变量（预处理写死）"],
+    ["C 不平衡", "fraud_imbalanced", "F1", 0.241, 0.406, 0.34, 0.43, 0.275, None,
+     "实测 0.275 低于及格线：无 class_weight / 阈值调节；macro-F1 会虚高（0.628）"],
 ]
 body(ws, 5, rows, fills={8}, numfmt={4: "0.000", 5: "0.000", 6: "0.00", 7: "0.00", 8: "0.000"})
+
+ws["A8"] = ("口径：及格线与基线由 5 折 OOF 标定；实测为 executor 的 60/20/20 单次留出"
+            "（seed 42 / 7 / 2026 取中位数，指标取 class=1 的 F1）。两套口径不可严格互比，"
+            "仅作方向性判定——跨种子极差达 0.13，等 executor 支持多 seed 判定后需重标。")
+ws["A8"].font = F_SMALL
+ws["A8"].alignment = Alignment(wrap_text=True, vertical="center")
+ws.merge_cells("A8:J8")
+ws.row_dimensions[8].height = 34
 for r in range(5, 8):
     ws.cell(row=r, column=9,
             value=f'=IF(H{r}="",0,IF(H{r}<F{r},0,IF(H{r}>=G{r},10,6+4*(H{r}-F{r})/(G{r}-F{r}))))')
@@ -233,7 +241,7 @@ for r in range(5, 8):
     ws.cell(row=r, column=9).alignment = CENTER
     ws.cell(row=r, column=9).border = BOX
     ws.cell(row=r, column=9).number_format = "0.0"
-    ws.row_dimensions[r].height = 34
+    ws.row_dimensions[r].height = 46
 
 ws["H9"] = "小计 / 30"
 ws["H9"].font = F_BOLD
