@@ -104,15 +104,29 @@
 
   <div class="stage" style="margin-top:10px">
     <label class="hint" style="display:flex;gap:6px;align-items:center">
-      <input type="checkbox" id="opt-local"> 真调本地千问（慢 2 秒，更真实）
+      <input type="checkbox" id="opt-local"> 调本地千问
     </label>
     <label class="hint" style="display:flex;gap:6px;align-items:center">
-      <input type="checkbox" id="opt-jev"> 真调 JEV（要 key）
+      <input type="checkbox" id="opt-jev"> 调 Jev
     </label>
     <label class="hint" style="display:flex;gap:6px;align-items:center">
-      <input type="checkbox" id="opt-cloud"> 真调云端（会花钱）
+      <input type="checkbox" id="opt-cloud"> 调云端大模型（此次使用 deepseek）
     </label>
   </div>
+
+  <!-- 填 key 的对话框：勾上开关才弹，只存在浏览器内存里 -->
+  <dialog id="key-dialog">
+    <div style="padding:4px">
+      <h3 style="margin:0 0 6px;font-size:16px" id="key-title">填写 API Key</h3>
+      <p class="hint" id="key-hint" style="margin:0 0 12px"></p>
+      <input id="key-input" type="password" placeholder="粘贴 key，只存在这个页面里"
+             style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit">
+      <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end">
+        <button id="key-cancel" type="button">取消</button>
+        <button id="key-save" class="primary" type="button">保存并使用</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- ① 千问的思考 -->
   <section class="card hidden" id="analysis">
@@ -161,6 +175,34 @@
   <section class="card hidden" id="versions-card">
     <h2>版本树 · 每一代都留档</h2>
     <div class="versions" id="versions"></div>
+  </section>
+
+  <section class="card hidden" id="research-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h2 style="margin:0">研究数据 · 给我们自己看的</h2>
+      <button id="toggle-research" class="secondary" type="button">展开明细</button>
+    </div>
+
+    <!-- 折线图：每一轮的验证分数 -->
+    <div id="chart-wrap" style="margin-top:18px">
+      <div class="hint" style="margin-bottom:8px">每一轮的验证分数（折线 = 实际走势，虚线 = 历史最优）</div>
+      <svg id="chart" viewBox="0 0 720 220" style="width:100%;height:220px"></svg>
+    </div>
+
+    <div id="research-detail" class="hidden" style="margin-top:18px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--line)">#</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--line)">模型</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--line)">参数</th>
+          <th style="text-align:right;padding:8px;border-bottom:1px solid var(--line)">验证 F1</th>
+          <th style="text-align:right;padding:8px;border-bottom:1px solid var(--line)">耗时</th>
+          <th style="text-align:left;padding:8px;border-bottom:1px solid var(--line)">假设 / 结果</th>
+        </tr></thead>
+        <tbody id="research-rows"></tbody>
+      </table>
+      <div id="research-summary" class="why" style="margin-top:14px"></div>
+    </div>
   </section>
 
   <section class="card hidden" id="log-card">
@@ -312,6 +354,9 @@ function render(data) {
   }).join('') || '<div class="empty">没有实验记录</div>';
   show('versions-card');
 
+  renderResearch(experiments, s, data.config || {});
+  show('research-card');
+
   // 事件
   const label = {analyst_profile:'Analyst 看数据', manager_plan:'Manager 定预算',
     scientist_proposal:'Scientist 提方案', experiment:'Experimenter 跑完',
@@ -341,7 +386,137 @@ function render(data) {
   show('log-card');
 }
 
+function renderResearch(experiments, summary, config) {
+  const scores = experiments.map((e) => Number(e.validation_score ?? e.validation_f1 ?? 0));
+  const best = summary.best_score != null ? Number(summary.best_score) : null;
+  drawChart(scores, best);
+
+  $('research-rows').innerHTML = experiments.map((exp, i) => {
+    const score = scores[i];
+    const isBest = best != null && Math.abs(score - best) < 1e-9;
+    const params = JSON.stringify(exp.parameters || {});
+    const note = exp.hypothesis || exp.expected_direction || '';
+    const verdict = exp.falsifier ? `证伪条件：${exp.falsifier}` : '';
+    return `<tr style="${isBest ? 'background:#f2fbf4;font-weight:600' : ''}">
+      <td style="padding:8px;border-bottom:1px solid var(--line)">v${i+1}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line)">${exp.model || '—'}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${params}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);text-align:right">${score.toFixed(4)}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);text-align:right;color:var(--muted)">${Number(exp.duration_seconds ?? 0).toFixed(2)}s</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${note}${verdict ? '<br>' + verdict : ''}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">没有实验</td></tr>';
+
+  const gap = best != null && scores.length ? best - scores[0] : null;
+  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  $('research-summary').innerHTML = `
+    <b>这次研究的数据</b><br>
+    总轮数 ${scores.length} ·
+    最佳 ${best != null ? best.toFixed(4) : '—'} ·
+    第一轮 ${scores.length ? scores[0].toFixed(4) : '—'} ·
+    ${gap != null && gap > 0 ? `提升 <b style="color:var(--good)">+${gap.toFixed(4)}</b>` : '没有提升'} ·
+    平均 ${avg.toFixed(4)} ·
+    回滚 ${summary.evoundo_rollbacks ?? 0} 次 ·
+    测试集 ${summary.test_evaluated ? '已评测' : '未触碰'}
+    <br><span style="font-size:12px">指标 ${config.metric || '—'} · 预算 ${config.max_experiments ?? '—'} 次 · 基线 ${config.baseline_model || '—'}</span>`;
+}
+
+function drawChart(scores, best) {
+  const svg = $('chart');
+  const W = 720, H = 220, padL = 46, padR = 16, padT = 16, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  svg.innerHTML = '';
+  if (!scores.length) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#9a928a" font-size="13">还没有数据</text>`;
+    return;
+  }
+  const yMax = Math.max(1, Math.ceil(Math.max(...scores, best ?? 0) * 10) / 10);
+  const x = (i) => padL + (scores.length === 1 ? plotW / 2 : (i / (scores.length - 1)) * plotW);
+  const y = (v) => padT + plotH - (v / yMax) * plotH;
+
+  const parts = [];
+  for (let k = 0; k <= 4; k++) {
+    const v = (yMax * k) / 4;
+    const yy = y(v);
+    parts.push(`<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="#eeeae5" stroke-width="1"/>`);
+    parts.push(`<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" fill="#9a928a" font-size="11">${v.toFixed(2)}</text>`);
+  }
+  scores.forEach((_, i) => {
+    parts.push(`<text x="${x(i)}" y="${H - 8}" text-anchor="middle" fill="#9a928a" font-size="11">v${i+1}</text>`);
+  });
+
+  if (best != null) {
+    let prev = -Infinity;
+    const stepPts = scores.map((s, i) => {
+      if (s > prev) prev = s;
+      return `${x(i)},${y(prev)}`;
+    });
+    parts.push(`<polyline points="${stepPts.join(' ')}" fill="none" stroke="#15803d"
+      stroke-width="1.5" stroke-dasharray="5 4" opacity="0.75"/>`);
+  }
+
+  const areaPts = [`${x(0)},${y(0)}`, ...scores.map((s, i) => `${x(i)},${y(s)}`), `${x(scores.length-1)},${y(0)}`];
+  parts.push(`<polygon points="${areaPts.join(' ')}" fill="#b45309" opacity="0.07"/>`);
+  parts.push(`<polyline points="${scores.map((s, i) => `${x(i)},${y(s)}`).join(' ')}"
+    fill="none" stroke="#b45309" stroke-width="2.5" stroke-linejoin="round"/>`);
+
+  scores.forEach((s, i) => {
+    const isBest = best != null && Math.abs(s - best) < 1e-9;
+    parts.push(`<circle cx="${x(i)}" cy="${y(s)}" r="${isBest ? 5 : 4}"
+      fill="${isBest ? '#15803d' : '#b45309'}" stroke="#fff" stroke-width="1.5"/>`);
+    parts.push(`<text x="${x(i)}" y="${y(s) - 10}" text-anchor="middle"
+      fill="${isBest ? '#15803d' : '#6b6560'}" font-size="11" font-weight="600">${s.toFixed(3)}</text>`);
+  });
+
+  svg.innerHTML = parts.join('');
+}
+
+function initializeDemo() {
+  const needs = {
+    'opt-jev': {title: 'TypeSafe JEV API Key', hint: '用于「决策支」判断值不值得调用云端。', storage: 'jevKey'},
+    'opt-cloud': {title: 'DeepSeek API Key', hint: '用于「生成支」真正出手。会按 token 计费。', storage: 'deepseekKey'},
+  };
+  Object.entries(needs).forEach(([id, cfg]) => {
+    const box = $(id);
+    if (!box) return;
+    box.addEventListener('change', () => {
+      if (!box.checked) return;
+      if (sessionStorage.getItem(cfg.storage)) return;
+      $('key-title').textContent = cfg.title;
+      $('key-hint').textContent = cfg.hint;
+      $('key-input').value = '';
+      $('key-dialog').dataset.target = id;
+      $('key-dialog').showModal();
+    });
+  });
+
+  $('key-cancel').addEventListener('click', () => {
+    const dialog = $('key-dialog');
+    const target = dialog.dataset.target;
+    if (target) $(target).checked = false;
+    dialog.close();
+  });
+  $('key-save').addEventListener('click', () => {
+    const dialog = $('key-dialog');
+    const target = dialog.dataset.target;
+    const value = $('key-input').value.trim();
+    if (!value) return;
+    sessionStorage.setItem(target === 'opt-jev' ? 'jevKey' : 'deepseekKey', value);
+    dialog.close();
+  });
+
+  const toggleBtn = $('toggle-research');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const detail = $('research-detail');
+      const hidden = detail.classList.toggle('hidden');
+      toggleBtn.textContent = hidden ? '展开明细' : '收起明细';
+    });
+  }
+}
+
 setStep(1);
+initializeDemo();
 </script>
 </body>
 </html>
