@@ -88,31 +88,50 @@ def _think(profile: dict, context: dict, proposer, model: str) -> dict:
     有本地模型时让它自己说；没有就退回规则生成的话术（但要标明来源）。
     """
     rows = profile.get('rows') or 0
+    features = profile.get('features') or 0
     classes = profile.get('class_count') or 0
     minority = profile.get('minority_fraction')
     missing = context.get('missing_fraction') or 0
     risks = profile.get('risks') or []
+    imbalanced = bool(profile.get('imbalanced'))
 
-    observations = []
-    observations.append(f'一共 {rows} 行、{profile.get("features") or 0} 个特征、{classes} 个类别。')
-    if minority is not None:
-        if profile.get('imbalanced'):
-            observations.append(f'少数类只占 {minority * 100:.1f}%，严重不平衡——'
-                                f'准确率会骗人，得看少数类的 F1。')
-        else:
-            observations.append(f'类别大致均衡（最少一类占 {minority * 100:.1f}%），可以看整体 F1。')
+    # 先把这份数据要做的事拆成两堆：我做得动的、我做不了的。
+    # 这是整个思考的主线——不是先盯模型，而是先看数据里有哪些活。
+    can_do = []
+    cannot_do = []
+
+    can_do.append(f'把 {rows} 行 × {features} 列读进来，逐列看类型和取值范围')
     if missing > 0.01:
-        observations.append(f'有 {missing * 100:.1f}% 的格子是空的，填充方式会影响结论。')
+        can_do.append(f'{missing * 100:.1f}% 的格子空着——中位数/众数填补我做得了')
     else:
-        observations.append('没有缺失值，不用纠结填充。')
+        can_do.append('没有空值，不需要填补')
+    can_do.append('把类别列编码成数字（one-hot），数值列做标准化')
+    if imbalanced:
+        can_do.append(f'少数类只占 {minority * 100:.1f}%——加 class_weight 让它被看见，这我也会')
+    else:
+        can_do.append(f'类别大致均衡（最少一类 {minority * 100:.1f}%），不用重采样' if minority is not None
+                      else '类别分布正常')
+    can_do.append('跑一遍基线模型，把分数算出来对比')
+
+    cannot_do.append('**该选哪个模型、为什么**——这要我判断业务含义，我判断不了')
+    cannot_do.append('**分数掉了到底是因为模型还是数据**——要诊断，我做不了')
+    cannot_do.append('**该不该换指标**（比如从整体 F1 换成少数类 F1）——这是研究决策')
     if rows and rows < 1000:
-        observations.append(f'只有 {rows} 行，属于小样本——复杂模型容易背答案，先试线性更稳。')
+        cannot_do.append(f'只有 {rows} 行，这么小的样本该不该相信这个分数——要人来定')
+    if imbalanced:
+        cannot_do.append('少数类样本这么少，是该重采样还是该换目标——要人来定')
+
+    observations = [
+        f'先看数据：{rows} 行、{features} 个特征、{classes} 个类别' +
+        (f'，有 {missing * 100:.1f}% 缺失' if missing > 0.01 else '，没有缺失') +
+        (f'，少数类占 {minority * 100:.1f}%' if minority is not None else ''),
+    ]
 
     if proposer is not None:
         try:
             prompt = (
-                '你是数据研究员。用三句话说明你从这份数据里看到了什么、该注意什么。'
-                '不要给方案，只描述观察。中文，口语。\n'
+                '你是数据研究员。先判断这份数据要做的事里，哪些是基础的数据处理（清洗/填补/编码/重采样），'
+                '哪些需要人的判断（选模型/定指标/诊断失败）。用三句话说完，中文，口语，不要给方案。\n'
                 + json.dumps({'profile': profile, 'risks': risks}, ensure_ascii=False)
             )
             response = proposer([{'role': 'user', 'content': prompt}], timeout=30)
@@ -120,12 +139,17 @@ def _think(profile: dict, context: dict, proposer, model: str) -> dict:
                 ((response.get('message') or {}).get('content') or '')
             if content.strip():
                 return {'source': 'local_model', 'model': model,
-                        'text': content.strip()[:800]}
+                        'text': content.strip()[:800],
+                        'can_do': can_do, 'cannot_do': cannot_do,
+                        'observations': observations}
         except Exception:          # noqa: BLE001 - 模型挂了就用规则话术，不影响演示
             pass
 
-    return {'source': 'rules', 'model': None, 'text': ' '.join(observations),
-            'bullets': observations}
+    return {'source': 'rules', 'model': None,
+            'text': ' | '.join(observations),
+            'observations': observations,
+            'can_do': can_do,
+            'cannot_do': cannot_do}
 
 
 def _suggest(profile: dict, context: dict) -> dict:

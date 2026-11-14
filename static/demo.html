@@ -139,6 +139,8 @@
       <div class="who" id="think-who">Tongyi Qianwen <span id="think-src"></span></div>
       <div id="think-body"></div>
     </div>
+    <div id="think-split" class="hidden" style="margin-top:16px;display:grid;
+         grid-template-columns:1fr 1fr;gap:14px"></div>
     <div class="why" id="think-why" style="margin-top:14px"></div>
   </section>
 
@@ -339,8 +341,31 @@ async function analyzeItem(item) {
   item.suggested = data.suggested;
   const thought = data.thought || {};
   $('think-src').textContent = thought.source === 'local_model' ? '· 本地模型' : '· 规则判断';
-  const bullets = (thought.bullets || []).map((b) => `<li>${b}</li>`).join('');
-  $('think-body').innerHTML = bullets ? `<ul>${bullets}</ul>` : `<p>${thought.text || ''}</p>`;
+  $('think-body').innerHTML = (thought.observations || [])
+    .map((line) => `<p style="margin:0 0 6px">${line}</p>`).join('')
+    || `<p>${thought.text || ''}</p>`;
+
+  // 把活拆成两堆：我做得动的 / 我做不了的
+  const canDo = thought.can_do || [];
+  const cannotDo = thought.cannot_do || [];
+  if (canDo.length || cannotDo.length) {
+    $('think-split').innerHTML = `
+      <div style="border:1px solid #b6e0c2;background:#f2fbf4;border-radius:12px;padding:14px">
+        <div style="font-weight:700;color:var(--good);margin-bottom:8px">
+          我能做的（数据处理活）</div>
+        <ul style="margin:0;padding-left:18px;font-size:13px">
+          ${canDo.map((x) => `<li style="margin-bottom:4px">${x}</li>`).join('')}
+        </ul>
+      </div>
+      <div style="border:1px solid #f0c060;background:#fffbeb;border-radius:12px;padding:14px">
+        <div style="font-weight:700;color:#b45309;margin-bottom:8px">
+          我做不了的（要交给大模型）</div>
+        <ul style="margin:0;padding-left:18px;font-size:13px">
+          ${cannotDo.map((x) => `<li style="margin-bottom:4px">${x}</li>`).join('')}
+        </ul>
+      </div>`;
+    $('think-split').classList.remove('hidden');
+  }
   $('think-why').innerHTML = `它建议：<b>${data.suggested.why}</b>`;
   showPanel('approval');
   $('f-metric').value = data.suggested.metric;
@@ -729,10 +754,46 @@ const applyProgress = (data) => {
   $('r-model').textContent = summary.best_model || '—';
   $('r-ver').textContent = experiments.length;
   $('r-rb').textContent = summary.evoundo_rollbacks ?? 0;
-  renderRiskBanner(experiments);
-  renderResearch(experiments, summary, {});
-  renderMultiCharts(experiments);
+
+  // 每一步都单独 try：一个图挂了不能让其它图也不画
+  try { renderRiskBanner(experiments); } catch (e) { console.error('banner', e); }
+  try { drawChart(experiments.map((e) => Number(e.validation_score ?? e.validation_f1 ?? 0)),
+                  summary.best_score != null ? Number(summary.best_score) : null); }
+  catch (e) { console.error('chart', e); }
+  try { renderMultiCharts(experiments); } catch (e) { console.error('multi', e); }
+  try {
+    fillResearchTable(experiments, summary);
+  } catch (e) { console.error('table', e); }
 };
+
+// 表格单独抽出来，好让迭代时不用重画整块
+function fillResearchTable(experiments, summary) {
+  const best = summary.best_score != null ? Number(summary.best_score) : null;
+  const scores = experiments.map((e) => Number(e.validation_score ?? e.validation_f1 ?? 0));
+  $('research-rows').innerHTML = experiments.map((exp, i) => {
+    const score = scores[i];
+    const isBest = best != null && Math.abs(score - best) < 1e-9;
+    return `<tr style="${isBest ? 'background:#f2fbf4;font-weight:600' : ''}">
+      <td style="padding:8px;border-bottom:1px solid var(--line)">v${i + 1}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line)">${exp.model || '—'}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${JSON.stringify(exp.parameters || {})}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);text-align:right">${score.toFixed(4)}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);text-align:right;color:var(--muted)">${Number(exp.duration_seconds ?? 0).toFixed(2)}s</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${exp.hypothesis || ''}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">还没跑</td></tr>';
+
+  const gap = best != null && scores.length ? best - scores[0] : null;
+  $('research-summary').innerHTML = `
+    已迭代 <b>${scores.length}</b> 代 · 最佳 <b>${best != null ? best.toFixed(4) : '—'}</b> ·
+    第一代 ${scores.length ? scores[0].toFixed(4) : '—'} ·
+    ${gap != null && gap > 0 ? `提升 <b style="color:var(--good)">+${gap.toFixed(4)}</b>` : '和第一代持平'} ·
+    回滚 ${summary.evoundo_rollbacks ?? 0} 次
+    <div style="margin-top:6px;font-size:12px;color:var(--muted)">
+      「最佳验证分数」= 这些代里，用验证集（没参与训练的那部分）算出来的最高分。
+      它衡量「这一代方案在新数据上大概有多准」，1.0 是满分。
+      测试集全程没碰，最后才用一次。</div>`;
+}
 
 function renderRiskBanner(experiments) {
   const banner = $('risk-banner');
@@ -759,19 +820,21 @@ function renderRiskBanner(experiments) {
 }
 
 $('step-btn').addEventListener('click', async () => {
-  if (!sessionId) { alert('先点「开始分析」并同意一次'); return; }
+  if (!sessionId) { alert('先点「开始处理队列」，等它分析完并同意一次'); return; }
   const btn = $('step-btn');
+  if (btn.disabled) return;               // 防连点
   btn.disabled = true;
   btn.textContent = '跑一代…';
   try {
     const data = await post('/demo/step', {session_id: sessionId});
     applyProgress(data);
-    btn.textContent = data.done ? '已停（点「再跑一次」重开）' : '迭代一次 →';
-  } catch (error) {
-    alert(error.message);
     btn.textContent = '迭代一次 →';
+  } catch (error) {
+    btn.textContent = '迭代一次 →';
+    alert('这一步没跑成：' + error.message);
   } finally {
-    btn.disabled = false;
+    // 无论成功失败都恢复，且不依赖 alert 是否被点掉
+    setTimeout(() => { btn.disabled = false; }, 80);
   }
 });
 
