@@ -1,0 +1,214 @@
+[
+ {
+  "dataset": "iris",
+  "repeat": 0,
+  "ok": true,
+  "error": null,
+  "seconds": 2.0,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "wine",
+  "repeat": 0,
+  "ok": true,
+  "error": null,
+  "seconds": 1.3,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "breast_cancer",
+  "repeat": 0,
+  "ok": true,
+  "error": null,
+  "seconds": 1.9,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "customer_churn",
+  "repeat": 0,
+  "ok": true,
+  "error": null,
+  "seconds": 2.4,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "sme_credit",
+  "repeat": 0,
+  "ok": true,
+  "error": null,
+  "seconds": 2.3,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "sensor_fault",
+  "repeat": 0,
+  "ok": true,
+  "error": null,
+  "seconds": 2.9,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1,
+    "class_weight": "balanced"
+   }
+  }
+ },
+ {
+  "dataset": "ops_churn",
+  "repeat": 0,
+  "ok": true,
+  "error": null,
+  "seconds": 1.7,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "iris",
+  "repeat": 1,
+  "ok": true,
+  "error": null,
+  "seconds": 1.7,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "wine",
+  "repeat": 1,
+  "ok": true,
+  "error": null,
+  "seconds": 1.4,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "breast_cancer",
+  "repeat": 1,
+  "ok": true,
+  "error": null,
+  "seconds": 2.0,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "customer_churn",
+  "repeat": 1,
+  "ok": true,
+  "error": null,
+  "seconds": 1.9,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "sme_credit",
+  "repeat": 1,
+  "ok": true,
+  "error": null,
+  "seconds": 2.3,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ },
+ {
+  "dataset": "sensor_fault",
+  "repeat": 1,
+  "ok": true,
+  "error": null,
+  "seconds": 3.8,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1,
+    "class_weight": "balanced"
+   }
+  }
+ },
+ {
+  "dataset": "ops_churn",
+  "repeat": 1,
+  "ok": true,
+  "error": null,
+  "seconds": 2.5,
+  "proposal": {
+   "model": "random_forest",
+   "parameters": {
+    "n_estimators": 100,
+    "max_depth": 10,
+    "min_samples_leaf": 1
+   }
+  }
+ }
+]
