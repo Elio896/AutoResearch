@@ -166,15 +166,21 @@ class Scientist:
             {'role': 'system', 'content':
              'Propose ONE classifier experiment. Return only a JSON object. '
              'Required fields: model, parameters, hypothesis (one sentence: what you believe and why), '
-             'expected_direction (up/down/flat), falsifier (what result would prove you wrong). '
-             'Optional: confidence_before (0..1). No explanation outside JSON. '
-             'No test evaluation. Never repeat an experiment.'},
+             'expected_direction (up/down/flat), falsifier (what result would prove you wrong), '
+             'confidence_before (a NUMBER from 0 to 1 - how sure you are THIS experiment beats the '
+             'current best; 0.9 = very sure, 0.5 = coin flip, 0.2 = wild guess. Never null, never a word). '
+             'No explanation outside JSON. No test evaluation. Never repeat an experiment.'},
             {'role': 'user', 'content':
              f'Allowed: {self._allowed_text()}\n'
              f'Data profile: {json.dumps(profile)}\n'
              f'Validation history: {json.dumps(history[-5:])}\n'
              'Guidance: try an untried model family before more tuning of the same one. '
              'For class imbalance, class_weight=balanced usually helps. '
+             'Example of a complete answer: '
+             '{"model":"hist_gradient_boosting","parameters":{"max_depth":4},'
+             '"hypothesis":"shallow trees control variance on this small sample",'
+             '"expected_direction":"up","falsifier":"validation F1 does not improve",'
+             '"confidence_before":0.55}\n'
              f'Last rejection: {feedback or "(none)"}'
              f'{advice_text}'},
         ]
@@ -231,8 +237,13 @@ class Scientist:
         if confidence is not None:
             if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
                 raise ValueError('confidence_before must be numeric if given.')
-            if not (0.0 <= float(confidence) <= 1.0):
-                raise ValueError('confidence_before must be within [0, 1].')
+            confidence = float(confidence)
+            # 模型常把置信度当百分比给（75 而不是 0.75），这里归一化。
+            # 改的是单位，不是数值——75% 就是 0.75。
+            if 1.0 < confidence <= 100.0:
+                confidence = confidence / 100.0
+            if not (0.0 <= confidence <= 1.0):
+                raise ValueError('confidence_before must be within [0, 1] (or 0..100 percent).')
 
         model = proposal['model']
         if model not in self.allowed:
