@@ -47,7 +47,8 @@ class DemoAnalyzeInput(BaseModel):
     target: str = Field(min_length=1, max_length=200)
     metric: str = 'f1_macro'
     pos_label: str = Field(default='1', max_length=200)
-    use_local_model: bool = False    # True 才真的调千问说话（慢），否则用规则话术
+    # None = 自动探测：Ollama 在就用真千问，不在才退回规则话术
+    use_local_model: bool | None = None
 
 
 class DemoApproveInput(BaseModel):
@@ -158,13 +159,12 @@ def create_app(data_directory=None):
     def demo_analyze(body: DemoAnalyzeInput):
         """第一步：千问盘点数据，返回它的思考。此时还没跑任何实验。"""
         import demo_flow
-        from orchestrator import LocalQwenClient
-        proposer = None
-        if body.use_local_model:
-            proposer = LocalQwenClient()
         try:
+            # 不强行指定 proposer：让 demo_flow 自己探测 Ollama，
+            # 探到就是真模型在说话，探不到才退回规则（返回里会标明来源）
             return demo_flow.start(body.csv_text, body.target, body.metric,
-                                   body.pos_label, proposer=proposer)
+                                   body.pos_label,
+                                   use_local_model=body.use_local_model)
         except Exception as exc:                    # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)[:300]) from None
 

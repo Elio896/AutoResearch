@@ -199,8 +199,9 @@
       <button id="toggle-research" class="secondary" type="button">展开明细</button>
     </div>
     <div id="chart-wrap" style="margin-top:18px">
-      <div class="hint" style="margin-bottom:8px">每一轮的验证分数（实线 = 实际，虚线 = 历史最优）</div>
-      <svg id="chart" viewBox="0 0 720 200" style="width:100%;height:200px"></svg>
+      <div class="hint" style="margin-bottom:8px">每一轮的验证分数（实线 = 实际，虚线 = 历史最优）
+        <span id="chart-stamp" style="float:right;color:var(--accent);font-weight:600"></span></div>
+      <svg id="chart" viewBox="0 0 720 220" style="width:100%;height:200px"></svg>
     </div>
 
     <!-- 每个变量一条曲线 -->
@@ -764,6 +765,14 @@ const applyProgress = (data) => {
   try {
     fillResearchTable(experiments, summary);
   } catch (e) { console.error('table', e); }
+
+  // 让"图到底更新了没有"一眼可见（也给排错留证据）
+  const stamp = $('chart-stamp');
+  if (stamp) {
+    stamp.textContent = experiments.length
+      ? `已更新 · ${experiments.length} 个点 · 最新 ${Number(experiments[experiments.length - 1].validation_score ?? 0).toFixed(4)}`
+      : '还没有数据';
+  }
 };
 
 // 表格单独抽出来，好让迭代时不用重画整块

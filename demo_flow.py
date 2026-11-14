@@ -33,13 +33,39 @@ def _prune() -> None:
         _SESSIONS.pop(key, None)
 
 
+def _local_proposer_if_available(model: str = 'qwen2.5:7b-instruct-q4_K_M'):
+    """Ollama 在就返回一个真客户端，不在就返回 None。
+
+    妈妈要的是"真的千问在思考"，不是规则话术。
+    所以默认就去探一下，探到就用真模型——探不到才退回规则，并在界面上标明。
+    """
+    try:
+        import urllib.request
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open('http://127.0.0.1:11434/api/ps', timeout=2) as resp:
+            json.loads(resp.read().decode('utf-8', 'replace'))
+        from orchestrator import LocalQwenClient
+        return LocalQwenClient(base_url='http://127.0.0.1:11434', model=model)
+    except Exception:                       # noqa: BLE001 - 没起就退回规则
+        return None
+
+
 def start(csv_text: str, target: str, metric: str, pos_label: str,
-          proposer=None, model: str = 'qwen2.5:7b-instruct-q4_K_M') -> dict:
-    """第一步：盘点数据。返回千问的思考 + 它建议的方案，等人审批。"""
+          proposer=None, model: str = 'qwen2.5:7b-instruct-q4_K_M',
+          use_local_model: bool | None = None) -> dict:
+    """第一步：盘点数据。返回千问的思考 + 它建议的方案，等人审批。
+
+    use_local_model=None 表示自动探测：Ollama 可用就用真模型。
+    """
     import tempfile
     from pathlib import Path
     from agents import Analyst
     from executor import ResearchSession
+
+    if proposer is None:
+        want_local = True if use_local_model is None else bool(use_local_model)
+        if want_local:
+            proposer = _local_proposer_if_available(model)
 
     tmp = tempfile.NamedTemporaryFile('w', suffix='.csv', delete=False, encoding='utf-8')
     try:
