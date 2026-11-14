@@ -52,11 +52,18 @@ def inspect_features(features, labels, dataset_hash, target):
             # 阈值放到 0.85 只标「候选」，仍然要求人审，不自动排除。
             if pd.notna(correlation) and abs(correlation) >= 0.85:
                 signals.append('strong_training_association')
-            # 二值列 + 与标签几乎一致：典型的「结果字段」
-            if numeric.nunique() == 2 and pd.notna(correlation) and abs(correlation) >= 0.80:
-                agree = (numeric.round() == encoded).mean()
-                if agree >= 0.90 or agree <= 0.10:
-                    signals.append('binary_matches_label_outcome')
+            # 二值列的一致性用 kappa 判，不用原始一致率：
+            # 正例率 4% 时「双方都为 0」就能贡献 90% 一致率，
+            # is_foreign 这种无关列也会踩中（一致 0.924 但 kappa 只有 0.214）。
+            # kappa 扣掉了偶然一致，才说明"真的跟着标签走"。
+            if numeric.nunique() == 2:
+                try:
+                    from sklearn.metrics import cohen_kappa_score
+                    kappa = cohen_kappa_score(numeric.round().astype(int), encoded.astype(int))
+                    if pd.notna(kappa) and abs(kappa) >= 0.5:
+                        signals.append('binary_high_kappa')
+                except Exception:          # noqa: BLE001 - 算不出来就不给这条信号
+                    pass
         if column in known:
             findings.append({'column': column, 'level': 'confirmed',
                              'signals': signals, 'evidence': known[column]['source']})
@@ -84,8 +91,15 @@ def apply_review(features, findings, decisions):
     cleaned = features.drop(columns=excluded)
     if not len(cleaned.columns):
         raise ValueError('At least one feature must remain.')
+    # 只有 confirmed（已在 known_leaks 登记过的实证泄漏）才阻断训练。
+    # candidate 只是启发式猜测——阈值放宽后猜得更勤，若也阻断，每个新数据集
+    # 都得人先写 decisions，那就不叫自主研究了。候选只告警，由人决定。
+    confirmed_columns = {item['column'] for item in findings if item['level'] == 'confirmed'}
+    blocking = sorted(confirmed_columns - set(decisions))
+    warnings = sorted(set(unresolved) - set(blocking))
     report = {'version': 1, 'scope': 'training_only', 'findings': findings,
               'decisions': decisions, 'excluded_columns': sorted(excluded),
-              'unresolved_columns': unresolved, 'blocked': bool(unresolved),
+              'unresolved_columns': unresolved, 'blocking_columns': blocking,
+              'warning_columns': warnings, 'blocked': bool(blocking),
               'limitation': 'A cleared review is not proof that all leakage has been detected.'}
     return cleaned, report

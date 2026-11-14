@@ -39,7 +39,9 @@ class IntegrityTests(unittest.TestCase):
         pd.DataFrame({'patient_id': range(100), 'measurement': [0, 1] * 50,
                       'target': [0, 1] * 50}).to_csv(path, index=False)
         session = ResearchSession(path, 'target')
-        self.assertTrue(session.risk_report['blocked'])
+        # candidate 只告警不阻断（confirmed 才阻断），但必须出现在 unresolved 里让人看见
+        self.assertTrue(session.risk_report['warning_columns'])
+        self.assertFalse(session.risk_report['blocked'])
         decisions = {name: {'action': 'keep', 'reason': 'Measured and available before prediction.'}
                      for name in session.risk_report['unresolved_columns']}
         reviewed = ResearchSession(path, 'target', feature_decisions=decisions)
@@ -58,20 +60,23 @@ class IntegrityTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             store.review(task, {})
 
-    def test_api_blocks_manual_and_autonomous_until_review(self):
+    def test_candidate_warns_but_does_not_block(self):
+        """candidate 是启发式猜测，只告警；只有 confirmed 才拒绝训练。
+
+        否则阈值放宽后每个新数据集都得先人工写 decisions，和"自主"冲突。
+        """
         from fastapi.testclient import TestClient
         from api import create_app
         with TestClient(create_app(self.root)) as client:
             response = client.post('/tasks', json={'csv_text': self.fixture.read_text(), 'target': 'target'})
             self.assertEqual(response.status_code, 201)
             task = response.json()['task_id']
-            self.assertTrue(response.json()['risk_report']['blocked'])
-            self.assertEqual(client.post(f'/tasks/{task}/experiments', json={}).status_code, 409)
-            self.assertEqual(client.post(f'/tasks/{task}/research', json={}).status_code, 409)
-            reviewed = client.post(f'/tasks/{task}/review', json={'decisions': {
-                'record_id': {'action': 'exclude', 'reason': 'Confirmed leakage in task generator.'}}})
-            self.assertEqual(reviewed.status_code, 200, reviewed.text)
-            self.assertFalse(reviewed.json()['risk_report']['blocked'])
+            report = response.json()['risk_report']
+            # 这份 fixture 的哈希不在 known_leaks 里，所以是 candidate
+            self.assertFalse(report['blocked'])
+            self.assertTrue(report['warning_columns'])
+            # 能直接跑，不需要先写 decisions
+            self.assertEqual(client.post(f'/tasks/{task}/experiments', json={}).status_code, 200)
 
     def test_renamed_scrambled_identifier_is_still_a_candidate(self):
         import pandas as pd
@@ -83,7 +88,9 @@ class IntegrityTests(unittest.TestCase):
         finding = next(item for item in report['findings'] if item['column'] == 'ordinary_feature')
         self.assertEqual(finding['level'], 'candidate')
         self.assertIn('unique_numeric_separates_training_classes', finding['signals'])
-        self.assertTrue(report['blocked'])
+        # 候选只告警，不阻断
+        self.assertIn('ordinary_feature', report['warning_columns'])
+        self.assertFalse(report['blocked'])
 
     def test_legacy_scores_are_kept_but_marked_at_risk(self):
         import json
