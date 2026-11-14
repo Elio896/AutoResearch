@@ -6,7 +6,7 @@
 
 1. **传代码**：把整个项目上传到 Notebook 工作目录，或
    ```
-   !git clone https://github.com/Elio896/EvoResearch.git
+   !git clone https://github.com/Elio896/AutoResearch.git
    ```
 
 2. **装环境**（一个 cell 里）：

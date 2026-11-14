@@ -874,7 +874,7 @@ See docs/codex-v22-ui-billing.md. Review workspace: 453 tests OK; pixel UI and a
 
 ## 上传 GitHub · 2026-11-14T23:3x (yuyu)
 
-仓库：`Elio896/EvoResearch`（private，main）。提交 `9d10d05`（136 文件）：V22 像素工作台 + 账户余额观测，含 V21 回答安全与 V20 单模型/重试。
+仓库：`Elio896/AutoResearch`（private，main）。提交 `9d10d05`（136 文件）：V22 像素工作台 + 账户余额观测，含 V21 回答安全与 V20 单模型/重试。
 
 做法：`gh repo clone` 到临时目录（保留远端历史）→ robocopy 同步本地源码（排除 .git/.venv/artifacts/data/__pycache__/*.log/*.zip/*.dpapi）→ 提交前扫描 `sk-`/`ghp_`/`Bearer` 无一命中 → `git push origin HEAD:main`。
 
