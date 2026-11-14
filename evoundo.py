@@ -22,6 +22,7 @@ import html
 import json
 import math
 import os
+import time
 import tempfile
 import threading
 import time
@@ -187,7 +188,16 @@ class VersionChain:
                     stream.write(text)
                     stream.flush()
                     os.fsync(stream.fileno())
-                os.replace(temporary_path, path)
+                # Windows 上 os.replace 会和并发的读句柄打架（WinError 5）。
+                # 原子性靠 replace 保证，但偶尔要先让一让，重试几次就过去了。
+                for attempt in range(5):
+                    try:
+                        os.replace(temporary_path, path)
+                        break
+                    except PermissionError:
+                        if attempt == 4:
+                            raise
+                        time.sleep(0.05 * (attempt + 1))
                 return path
             finally:
                 if temporary_path is not None and temporary_path.exists():
