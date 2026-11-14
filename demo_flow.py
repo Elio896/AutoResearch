@@ -154,8 +154,13 @@ def approve(session_id: str, overrides: dict | None = None) -> dict:
                                                      **(overrides or {})}}
 
 
-def execute(session_id: str, offline: bool = True) -> dict:
-    """第三步：带人改过的配置真跑，然后返回 JEV 和云端两支的思考。"""
+def execute(session_id: str, offline: bool = True,
+            use_jev: bool = False, use_cloud: bool = False) -> dict:
+    """第三步：带人改过的配置真跑，然后返回 JEV 和云端两支的思考。
+
+    use_jev / use_cloud 默认关：演示默认不花钱。
+    打开后就真的调 JEV 判、真的调云端（要 key）。
+    """
     session = _SESSIONS.get(session_id)
     if session is None:
         raise KeyError('session 不存在或已过期')
@@ -205,18 +210,39 @@ def execute(session_id: str, offline: bool = True) -> dict:
         except OSError:
             pass
 
-    branches = _branches(result, config)
+    # 两支：有 key 且用户要求时才真调
+    jev_gate = None
+    cloud = None
+    if use_jev:
+        try:
+            from jev_router import JevGate
+            jev_gate = JevGate.auto()
+        except Exception:                       # noqa: BLE001
+            jev_gate = None
+    if use_cloud:
+        try:
+            import os
+            from cloud_provider import DeepSeekClient
+            key = os.environ.get('DEEPSEEK_API_KEY', '').strip()
+            if key:
+                cloud = DeepSeekClient(key)
+        except Exception:                       # noqa: BLE001
+            cloud = None
+
+    config['rows'] = session['profile'].get('rows') or 0
+    branches = _branches(result, config, jev_gate=jev_gate, cloud=cloud)
     session['runs'] = result
     return {'summary': result['summary'], 'events': result['events'],
             'experiments': result['experiments'], 'config': config,
-            'branches': branches, 'offline': offline}
+            'branches': branches, 'offline': offline,
+            'used_jev': jev_gate is not None, 'used_cloud': cloud is not None}
 
 
-def _branches(result: dict, config: dict) -> dict:
+def _branches(result: dict, config: dict, jev_gate=None, cloud=None) -> dict:
     """两条支线各自的「思考」。
 
-    jev       —— 决策支：该不该升级到云端
-    cloud     —— 生成支：如果要升级，云端会怎么想
+    jev       —— 决策支：有真 JEV 就用真 JEV 判；没有就用规则判（并标明）
+    cloud     —— 生成支：JEV 说"值得"时才真调云端；否则只说明"它会怎么做"
     """
     summary = result.get('summary') or {}
     events = result.get('events') or []
@@ -224,27 +250,76 @@ def _branches(result: dict, config: dict) -> dict:
     stuck = [e for e in events if e.get('event') == 'reviewer_verdict'
              and (e.get('verdict') or {}).get('verdict') in ('flat', 'regressed')]
 
+    # ---- 决策支：先问 JEV ----
+    jev_state = {
+        'task': 'demo',
+        'trigger': 'validation_plateau' if stuck else 'still_progressing',
+        'experiments_used': len(events_by(events, 'experiment')),
+        'best_validation_score': round(float(score), 4),
+        'recent_scores': [round(float(e.get('score') or 0), 4)
+                          for e in events_by(events, 'experiment')][-4:],
+        'remaining_cloud_calls': 1,
+        'rows': config.get('rows') or 0,
+    }
+
+    verdict, reason, cost, source = '不值得', '本地还在进步，现在花钱是浪费', '0 token（纯规则判断）', 'rules'
+    if jev_gate is not None:
+        try:
+            decision = jev_gate(jev_state, timeout=30)
+            source = decision.get('source', 'jev')
+            allow = bool(decision.get('allow_cloud'))
+            verdict = '值得' if allow else '不值得'
+            probability = decision.get('probability')
+            model_name = decision.get('model')
+            if probability is not None:
+                reason = (f'JEV 判「有价值」的概率 {probability:.2f}'
+                          f'（阈值 {decision.get("threshold", 0.75)}），模型 {model_name}')
+                cost = '按 token 计费（这次真调了）'
+            else:
+                reason = f'JEV 不可用，退回规则判定：{decision.get("reason", "")}'
+        except Exception as exc:                    # noqa: BLE001
+            reason = f'JEV 调用失败，退回规则：{str(exc)[:80]}'
+
     jev_thought = {
         'name': 'JEV · 决策支',
         'question': '这轮卡住了，值不值得花钱让云端接手？',
-        'signals': {
-            'best_score': round(float(score), 4),
-            'stalled_rounds': len(stuck),
-            'metric': config.get('metric'),
-            'budget_left': 1,
-        },
-        'verdict': ('值得' if stuck else '不值得'),
-        'reason': (f'连续 {len(stuck)} 轮没进步，本地确实卡住了' if stuck
-                   else '本地还在进步，现在花钱是浪费'),
-        'cost': '0 token（纯规则判断）',
+        'signals': jev_state,
+        'verdict': verdict,
+        'reason': reason,
+        'source': source,
+        'cost': cost,
     }
 
+    # ---- 生成支：值得才真调 ----
     cloud_thought = {
         'name': 'DeepSeek · 生成支',
         'question': '如果交给我，我会怎么改？',
-        'status': '未调用' if not stuck else '可调用',
-        'reason': ('本地还在进步，暂时不需要我' if not stuck
-                   else f'当前最好 {round(float(score), 4)}，我会试着换模型族或加大正则'),
+        'status': '未调用',
+        'reason': '本地还在进步，暂时不需要我',
         'cost': '按 token 计费，只在上面那支说「值得」时才花',
     }
+    if cloud is not None and verdict == '值得':
+        try:
+            history = [{'model': e.get('model'), 'parameters': e.get('parameters'),
+                        'score': e.get('score')} for e in events_by(events, 'experiment')][-5:]
+            prompt = (
+                '你是云端专家。本地规划器卡住了，这是它的实验历史：\n'
+                + json.dumps(history, ensure_ascii=False)
+                + '\n用两句话说明你会怎么改，不要给完整 JSON。'
+            )
+            response = cloud([{'role': 'user', 'content': prompt}], timeout=45)
+            text = response if isinstance(response, str) else \
+                ((response.get('message') or {}).get('content') or '')
+            cloud_thought.update({
+                'status': '已调用',
+                'reason': text.strip()[:500] or '云端没有给出内容',
+                'cost': '这次真花了 token',
+            })
+        except Exception as exc:                    # noqa: BLE001
+            cloud_thought.update({'status': '调用失败', 'reason': str(exc)[:160]})
+
     return {'jev': jev_thought, 'cloud': cloud_thought}
+
+
+def events_by(events: list, name: str) -> list:
+    return [e for e in events if e.get('event') == name]

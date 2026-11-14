@@ -62,6 +62,8 @@ class DemoExecuteInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     session_id: str = Field(min_length=1, max_length=64)
     offline: bool = True
+    use_jev: bool = False      # True 才真调 TypeSafe JEV（要 TYPESAFE_API_KEY）
+    use_cloud: bool = False    # True 才真调 DeepSeek（要 DEEPSEEK_API_KEY，会花钱）
 
 
 class ResearchInput(BaseModel):
@@ -167,7 +169,8 @@ def create_app(data_directory=None):
         """第三步：真跑实验，返回 JEV 与云端两支各自的判断。"""
         import demo_flow
         try:
-            return demo_flow.execute(body.session_id, offline=body.offline)
+            return demo_flow.execute(body.session_id, offline=body.offline,
+                                     use_jev=body.use_jev, use_cloud=body.use_cloud)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from None
         except PermissionError as exc:

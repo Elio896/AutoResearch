@@ -102,6 +102,18 @@
     <button id="start" class="primary" style="margin-left:auto">开始分析</button>
   </div>
 
+  <div class="stage" style="margin-top:10px">
+    <label class="hint" style="display:flex;gap:6px;align-items:center">
+      <input type="checkbox" id="opt-local"> 真调本地千问（慢 2 秒，更真实）
+    </label>
+    <label class="hint" style="display:flex;gap:6px;align-items:center">
+      <input type="checkbox" id="opt-jev"> 真调 JEV（要 key）
+    </label>
+    <label class="hint" style="display:flex;gap:6px;align-items:center">
+      <input type="checkbox" id="opt-cloud"> 真调云端（会花钱）
+    </label>
+  </div>
+
   <!-- ① 千问的思考 -->
   <section class="card hidden" id="analysis">
     <h2>千问的判断</h2>
@@ -201,9 +213,10 @@ $('start').addEventListener('click', async () => {
   show('analysis');
   $('think-body').innerHTML = '<p class="hint">正在盘点：行列数、缺失、类别分布…</p>';
   try {
+    const useLocal = $('opt-local').checked;
     const data = await post('/demo/analyze', {
       csv_text: IRIS, target: 'species', metric: 'f1_macro', pos_label: '1',
-      use_local_model: false,
+      use_local_model: useLocal,
     });
     sessionId = data.session_id;
     const thought = data.thought || {};
@@ -245,7 +258,10 @@ $('approve').addEventListener('click', async () => {
         max_experiments: Number($('f-budget').value),
       },
     });
-    const data = await post('/demo/execute', {session_id: sessionId, offline: true});
+    const data = await post('/demo/execute', {
+      session_id: sessionId, offline: true,
+      use_jev: $('opt-jev').checked, use_cloud: $('opt-cloud').checked,
+    });
     render(data);
     btn.textContent = '再跑一次';
   } catch (error) {
