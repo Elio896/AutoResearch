@@ -200,9 +200,12 @@ class ResearchSession:
                   # 不传 --feature-decisions 时就只剩 {}，而 chargeback_filed
                   # 其实已被标成 candidate——用户看到 success + 0.9546 却毫不知情。
                   # candidate 不阻断之后，这个出口更不能缺。
+                  # 二德子 2026-11-14 补充：已被 exclude 的列不该继续告警——
+                  # 它已经不参与训练了，再提示只会让人以为没处理。
                   'risk_warnings': [
                       {'column': f['column'], 'level': f['level'], 'signals': f['signals']}
                       for f in self.risk_report['findings']
+                      if f['column'] not in set(self.risk_report['excluded_columns'])
                   ],
                   'risk_findings': self.risk_report['findings'],
                   'risk_blocked': self.risk_report['blocked'],
@@ -210,6 +213,25 @@ class ResearchSession:
                   'validation_accuracy': float(accuracy_score(actual, predictions)),
                   'duration_seconds': time.perf_counter() - started}
         result.update(self._metrics(actual, predictions, 'validation'))
+        # validation_score 必须跟着 selection_metric 走。
+        # 二德子 2026-11-14 实测：不平衡数据用 macro-F1 会被多数类撑高——
+        # readmission 报 0.508 而正例 F1 只有 0.177，等于用错指标选模型。
+        if self.metric == 'f1_minority':
+            from sklearn.metrics import f1_score as _f1
+            result['validation_score'] = float(_f1(
+                actual, predictions, average='binary',
+                pos_label=self.positive_id, zero_division=0))
+        elif self.metric == 'pr_auc' and self.metric in ('pr_auc',):
+            from sklearn.metrics import average_precision_score
+            probabilities = pipeline.predict_proba(self.x.iloc[self.validation_indices])
+            classes = list(pipeline.classes_)
+            pos_index = classes.index(self.positive_id) if self.positive_id in classes else -1
+            result['validation_score'] = float(
+                average_precision_score((actual == self.positive_id).astype(int),
+                                        probabilities[:, pos_index]))
+        else:
+            result['validation_score'] = result['validation_f1']
+        result['selection_metric'] = self.metric
         self.experiments[experiment_id] = (pipeline, result)
         return result
 
