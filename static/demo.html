@@ -10,38 +10,61 @@
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
          font:15px/1.65 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-  .wrap { max-width:1120px; margin:0 auto; padding:36px 24px 90px; }
-  header h1 { font-size:30px; margin:0 0 6px; letter-spacing:-.5px; }
-  header p { margin:0; color:var(--muted); }
+  .wrap { max-width:1120px; margin:0 auto; padding:32px 24px 90px; }
+  header h1 { font-size:28px; margin:0 0 18px; letter-spacing:-.5px; }
 
-  .stage { margin-top:26px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .stage .step { font-size:12px; color:var(--muted); border:1px solid var(--line);
-                 background:var(--card); border-radius:999px; padding:6px 14px; }
-  .stage .step.on { border-color:var(--accent); color:var(--accent); font-weight:600; }
-  .stage .step.done { border-color:var(--good); color:var(--good); }
+  /* 上传区 */
+  .dropzone {
+    border:2px dashed var(--line); border-radius:14px; background:var(--card);
+    padding:26px; text-align:center; transition:.18s; cursor:pointer;
+  }
+  .dropzone:hover, .dropzone.dragging { border-color:var(--accent); background:#fffbf5; }
+  .dropzone strong { display:block; font-size:15px; margin-bottom:4px; }
+  .dropzone span { color:var(--muted); font-size:13px; }
+
+  /* 队列 */
+  .queue { margin-top:16px; display:flex; flex-direction:column; gap:8px; }
+  .qitem {
+    display:grid; grid-template-columns:1fr 110px 130px 70px; align-items:center; gap:10px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+    font-size:14px; cursor:pointer; transition:.15s;
+  }
+  .qitem:hover { border-color:#c9c2ba; }
+  .qitem.active { border-color:var(--accent); box-shadow:0 0 0 3px #fde8d3; }
+  .qitem .fname { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qitem .meta { color:var(--muted); font-size:12px; }
+  .qitem .state { font-size:12px; text-align:right; }
+  .qitem .state.pending { color:var(--muted); }
+  .qitem .state.running { color:var(--accent); font-weight:600; }
+  .qitem .state.waiting { color:var(--blue); font-weight:600; }
+  .qitem .state.done { color:var(--good); font-weight:600; }
+  .qitem .state.error { color:var(--bad); font-weight:600; }
+  .qitem .del { color:var(--muted); font-size:16px; text-align:center; }
+  .qitem .del:hover { color:var(--bad); }
 
   button { font:inherit; cursor:pointer; border-radius:10px; border:1px solid var(--line);
-           padding:11px 20px; background:var(--card); color:var(--ink); transition:.15s; }
+           padding:10px 18px; background:var(--card); color:var(--ink); transition:.15s; }
   button:hover { border-color:#c9c2ba; }
   button.primary { background:var(--ink); color:#fff; border-color:var(--ink); font-weight:600; }
   button.primary:hover { background:#2b2622; }
   button:disabled { opacity:.4; cursor:not-allowed; }
   .hint { color:var(--muted); font-size:13px; }
 
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin-top:20px; }
+  .bar { display:flex; gap:12px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+  .bar .opts { display:flex; gap:14px; flex-wrap:wrap; margin-left:auto; }
+  .bar label { display:flex; gap:6px; align-items:center; font-size:13px; color:var(--muted); }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin-top:18px; }
   .card h2 { margin:0 0 14px; font-size:13px; font-weight:700; letter-spacing:.6px;
              color:var(--muted); text-transform:uppercase; }
   .hidden { display:none !important; }
 
-  /* 千问的思考 */
   .think { border-left:3px solid var(--accent); padding-left:16px; }
   .think .who { font-weight:700; font-size:14px; margin-bottom:6px; }
   .think .who span { color:var(--muted); font-weight:400; font-size:12px; margin-left:6px; }
-  .think p { margin:0 0 8px; }
   .think ul { margin:8px 0 0; padding-left:20px; }
   .think li { margin-bottom:4px; }
 
-  /* 审批区 */
   .approve { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:16px 0; }
   @media (max-width:760px){ .approve { grid-template-columns:1fr; } }
   .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
@@ -49,87 +72,69 @@
                                 border-radius:8px; font:inherit; background:var(--bg); }
   .why { font-size:13px; color:var(--muted); background:var(--bg); border-radius:8px; padding:10px 12px; }
 
-  /* 两条支线 */
   .branches { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:18px; }
   @media (max-width:820px){ .branches { grid-template-columns:1fr; } }
   .branch { border:1px solid var(--line); border-radius:12px; padding:16px; }
   .branch.jev { border-color:var(--accent); background:#fffbf5; }
   .branch.cloud { border-color:var(--blue); background:#f8faff; }
   .branch h3 { margin:0 0 8px; font-size:15px; }
-  .branch .verdict { font-size:26px; font-weight:700; margin:6px 0; }
+  .branch .verdict { font-size:24px; font-weight:700; margin:6px 0; }
   .branch.jev .verdict { color:var(--accent); }
   .branch.cloud .verdict { color:var(--blue); }
   .branch .kv { font-size:13px; color:var(--muted); margin:3px 0; }
-  .branch .kv b { color:var(--ink); font-weight:600; }
+  .branch .kv b { color:var(--ink); }
 
-  /* 版本树 */
   .versions { display:flex; flex-direction:column; gap:8px; }
   .ver { display:grid; grid-template-columns:26px 1fr 88px 92px; align-items:center;
          gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; font-size:14px; }
-  .ver .idx { color:var(--muted); font-variant-numeric:tabular-nums; font-size:12px; }
+  .ver .idx { color:var(--muted); font-size:12px; }
   .ver .model { font-weight:600; }
-  .ver .score { font-variant-numeric:tabular-nums; font-weight:700; text-align:right; }
+  .ver .score { text-align:right; font-weight:700; }
   .ver .state { font-size:12px; text-align:right; color:var(--muted); }
   .ver.best { border-color:var(--good); background:#f2fbf4; }
   .ver.best .state { color:var(--good); font-weight:600; }
-  .ver.rolled { color:#a8a29c; }
-  .ver.rolled .model, .ver.rolled .score { text-decoration:line-through; }
-  .ver.rolled .state { color:var(--bad); }
 
-  .big-number { font-size:40px; font-weight:700; letter-spacing:-1px; line-height:1.1; }
+  .big-number { font-size:38px; font-weight:700; letter-spacing:-1px; line-height:1.1; }
   .big-label { color:var(--muted); font-size:13px; margin-top:2px; }
-  .stats { display:flex; gap:30px; flex-wrap:wrap; }
+  .stats { display:flex; gap:28px; flex-wrap:wrap; }
 
-  .log { max-height:300px; overflow-y:auto; font-size:13px; }
+  .log { max-height:280px; overflow-y:auto; font-size:13px; }
   .log div { padding:7px 0; border-bottom:1px dashed var(--line); display:flex; gap:10px; }
   .log div:last-child { border-bottom:0; }
-  .log .tag { flex:0 0 120px; color:var(--muted); font-size:12px; }
-  .empty { color:var(--muted); font-size:14px; padding:14px 0; }
+  .log .tag { flex:0 0 118px; color:var(--muted); font-size:12px; }
+  .empty { color:var(--muted); font-size:14px; padding:12px 0; }
   .err { color:var(--bad); }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>EvoResearch</h1>
-  </header>
+  <header><h1>EvoResearch</h1></header>
 
-  <div class="stage">
-    <span class="step" id="s1">① 千问盘点</span>
-    <span class="step" id="s2">② 人工审批</span>
-    <span class="step" id="s3">③ 执行与分支</span>
-    <button id="start" class="primary" style="margin-left:auto">开始分析</button>
+  <!-- 1. 先加文件 -->
+  <div class="dropzone" id="dropzone">
+    <strong>拖文件进来，或点这里选择</strong>
+    <span>支持一次选多个 CSV · 每个文件单独排队，一个跑完自动下一个</span>
+    <input type="file" id="file-input" accept=".csv,text/csv" multiple hidden>
   </div>
 
-  <div class="stage" style="margin-top:10px">
-    <label class="hint" style="display:flex;gap:6px;align-items:center">
-      <input type="checkbox" id="opt-local"> 调本地千问
-    </label>
-    <label class="hint" style="display:flex;gap:6px;align-items:center">
-      <input type="checkbox" id="opt-jev"> 调 Jev
-    </label>
-    <label class="hint" style="display:flex;gap:6px;align-items:center">
-      <input type="checkbox" id="opt-cloud"> 调云端大模型（此次使用 deepseek）
-    </label>
-  </div>
+  <!-- 队列 -->
+  <div class="queue" id="queue"></div>
 
-  <!-- 填 key 的对话框：勾上开关才弹，只存在浏览器内存里 -->
-  <dialog id="key-dialog">
-    <div style="padding:4px">
-      <h3 style="margin:0 0 6px;font-size:16px" id="key-title">填写 API Key</h3>
-      <p class="hint" id="key-hint" style="margin:0 0 12px"></p>
-      <input id="key-input" type="password" placeholder="粘贴 key，只存在这个页面里"
-             style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit">
-      <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end">
-        <button id="key-cancel" type="button">取消</button>
-        <button id="key-save" class="primary" type="button">保存并使用</button>
-      </div>
+  <!-- 控制区 -->
+  <div class="bar">
+    <button id="start-all" class="primary" disabled>开始处理队列</button>
+    <button id="clear-all" disabled>清空</button>
+    <span class="hint" id="queue-hint">还没有文件</span>
+    <div class="opts">
+      <label><input type="checkbox" id="opt-local"> 调本地千问</label>
+      <label><input type="checkbox" id="opt-jev"> 调 Jev</label>
+      <label><input type="checkbox" id="opt-cloud"> 调云端大模型（此次使用 deepseek）</label>
     </div>
-  </dialog>
+  </div>
 
-  <!-- ① 千问的思考 -->
+  <!-- 当前文件的处理过程 -->
   <section class="card hidden" id="analysis">
-    <h2>千问的判断</h2>
+    <h2>① 千问的判断</h2>
     <div class="think">
       <div class="who" id="think-who">Tongyi Qianwen <span id="think-src"></span></div>
       <div id="think-body"></div>
@@ -137,10 +142,9 @@
     <div class="why" id="think-why" style="margin-top:14px"></div>
   </section>
 
-  <!-- ② 人工审批 -->
   <section class="card hidden" id="approval">
-    <h2>人工审批 · 你可以改</h2>
-    <p class="hint" style="margin-top:-6px">看不顺眼就改，改完才算数。点「同意」之前不会跑任何实验、不花任何 token。</p>
+    <h2>② 人工审批 · 你可以改</h2>
+    <p class="hint" style="margin-top:-6px">点「同意」之前不会跑任何实验、不花任何 token。</p>
     <div class="approve">
       <div class="field"><label>评估指标</label>
         <select id="f-metric"><option value="f1_macro">f1_macro（整体）</option>
@@ -155,25 +159,18 @@
     <button id="approve" class="primary">同意并继续 →</button>
   </section>
 
-  <!-- ③ 结果 + 两条支线 -->
   <section class="card hidden" id="result">
-    <h2>结果</h2>
+    <h2>③ 结果</h2>
     <div class="stats">
       <div><div class="big-number" id="r-score">—</div><div class="big-label">最佳验证分数</div></div>
       <div><div class="big-number" id="r-model" style="font-size:20px">—</div><div class="big-label">最佳方案</div></div>
-      <div><div class="big-number" id="r-ver" style="font-size:26px">0</div><div class="big-label">版本数</div></div>
-      <div><div class="big-number" id="r-rb" style="font-size:26px">0</div><div class="big-label">回滚次数</div></div>
+      <div><div class="big-number" id="r-ver" style="font-size:24px">0</div><div class="big-label">版本数</div></div>
+      <div><div class="big-number" id="r-rb" style="font-size:24px">0</div><div class="big-label">回滚次数</div></div>
     </div>
-
     <div class="branches">
       <div class="branch jev" id="b-jev"><h3>JEV · 决策支</h3><div class="empty">等结果…</div></div>
       <div class="branch cloud" id="b-cloud"><h3>DeepSeek · 生成支</h3><div class="empty">等结果…</div></div>
     </div>
-  </section>
-
-  <section class="card hidden" id="versions-card">
-    <h2>版本树 · 每一代都留档</h2>
-    <div class="versions" id="versions"></div>
   </section>
 
   <section class="card" id="research-card">
@@ -181,13 +178,10 @@
       <h2 style="margin:0">研究数据</h2>
       <button id="toggle-research" class="secondary" type="button">展开明细</button>
     </div>
-
-    <!-- 折线图：每一轮的验证分数 -->
     <div id="chart-wrap" style="margin-top:18px">
-      <div class="hint" style="margin-bottom:8px">每一轮的验证分数（实线 = 实际走势，虚线 = 历史最优）</div>
+      <div class="hint" style="margin-bottom:8px">每一轮的验证分数（实线 = 实际，虚线 = 历史最优）</div>
       <svg id="chart" viewBox="0 0 720 220" style="width:100%;height:220px"></svg>
     </div>
-
     <div id="research-detail" class="hidden" style="margin-top:18px">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr>
@@ -204,36 +198,156 @@
     </div>
   </section>
 
+  <section class="card hidden" id="versions-card">
+    <h2>版本树</h2>
+    <div class="versions" id="versions"></div>
+  </section>
+
   <section class="card hidden" id="log-card">
     <h2>研究过程</h2>
     <div class="log" id="log"></div>
   </section>
 </div>
 
+<dialog id="key-dialog">
+  <div style="padding:4px;min-width:340px">
+    <h3 style="margin:0 0 6px;font-size:16px" id="key-title">填写 API Key</h3>
+    <p class="hint" id="key-hint" style="margin:0 0 12px"></p>
+    <input id="key-input" type="password" placeholder="粘贴 key，只存在这个页面里"
+           style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit">
+    <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end">
+      <button id="key-cancel" type="button">取消</button>
+      <button id="key-save" class="primary" type="button">保存并使用</button>
+    </div>
+  </div>
+</dialog>
+
 <script>
 const $ = (id) => document.getElementById(id);
-let sessionId = null;
 
-function setStep(n) {
-  ['s1','s2','s3'].forEach((id, i) => {
-    const el = $(id);
-    el.classList.remove('on','done');
-    if (i + 1 < n) el.classList.add('done');
-    if (i + 1 === n) el.classList.add('on');
+// ---------- 队列 ----------
+const queue = [];          // {name, csv, state, result}
+let current = null;        // 当前正在处理的项
+let running = false;
+
+function renderQueue() {
+  $('queue').innerHTML = queue.map((item, i) => `
+    <div class="qitem ${item === current ? 'active' : ''}" data-idx="${i}">
+      <div><div class="fname">${item.name}</div>
+           <div class="meta">${(item.csv.length / 1024).toFixed(1)} KB</div></div>
+      <div class="meta">${item.target || '待定 target'}</div>
+      <div class="state ${item.state}">${stateLabel(item.state)}</div>
+      <div class="del" data-del="${i}">✕</div>
+    </div>`).join('') || '<div class="empty">拖 CSV 进来，或点上面的框选择文件（可多选）。</div>';
+
+  const pending = queue.filter((q) => q.state === 'pending').length;
+  const done = queue.filter((q) => q.state === 'done').length;
+  $('queue-hint').textContent = queue.length
+    ? `${queue.length} 个文件 · 完成 ${done} · 待处理 ${pending}`
+    : '还没有文件';
+  $('start-all').disabled = running || pending === 0;
+  $('clear-all').disabled = running || queue.length === 0;
+}
+
+function stateLabel(s) {
+  return {pending:'待处理', running:'分析中…', waiting:'等审批', executing:'执行中…',
+          done:'已完成', error:'失败'}[s] || s;
+}
+
+// 加文件
+async function addFiles(files) {
+  for (const file of files) {
+    const text = await file.text();
+    const header = text.split('\n')[0] || '';
+    const cols = header.split(',').map((c) => c.trim());
+    // 猜 target：最后一列
+    const target = cols[cols.length - 1] || 'target';
+    queue.push({name: file.name, csv: text, target, state: 'pending', result: null});
+  }
+  renderQueue();
+}
+
+// 处理队列：一个跑完自动下一个
+async function runQueue() {
+  if (running) return;
+  running = true;
+  renderQueue();
+  while (true) {
+    const item = queue.find((q) => q.state === 'pending');
+    if (!item) break;
+    current = item;
+    item.state = 'running';
+    renderQueue();
+    try {
+      await analyzeItem(item);
+      item.state = 'waiting';
+      renderQueue();
+      // 等人工审批（approve 按钮会 resolve 这个 promise）
+      await waitForApproval(item);
+      item.state = 'executing';
+      renderQueue();
+      const data = await executeItem(item);
+      item.result = data;
+      item.state = 'done';
+      renderCurrent(item, data);
+    } catch (error) {
+      item.state = 'error';
+      item.error = error.message;
+      renderQueue();
+    }
+  }
+  running = false;
+  current = null;
+  renderQueue();
+}
+
+// 分析单项
+async function analyzeItem(item) {
+  showPanel('analysis');
+  $('think-body').innerHTML = '<p class="hint">正在盘点：行列数、缺失、类别分布…</p>';
+  const data = await post('/demo/analyze', {
+    csv_text: item.csv, target: item.target, metric: 'f1_macro', pos_label: '1',
+    use_local_model: $('opt-local').checked,
+  });
+  item.sessionId = data.session_id;
+  item.suggested = data.suggested;
+  const thought = data.thought || {};
+  $('think-src').textContent = thought.source === 'local_model' ? '· 本地模型' : '· 规则判断';
+  const bullets = (thought.bullets || []).map((b) => `<li>${b}</li>`).join('');
+  $('think-body').innerHTML = bullets ? `<ul>${bullets}</ul>` : `<p>${thought.text || ''}</p>`;
+  $('think-why').innerHTML = `它建议：<b>${data.suggested.why}</b>`;
+  showPanel('approval');
+  $('f-metric').value = data.suggested.metric;
+  $('f-model').value = data.suggested.baseline_model;
+  $('f-budget').value = data.suggested.max_experiments;
+}
+
+// 等人工点「同意」
+let approvalResolver = null;
+function waitForApproval(item) {
+  return new Promise((resolve) => {
+    approvalResolver = async () => {
+      await post('/demo/approve', {
+        session_id: item.sessionId,
+        overrides: {
+          metric: $('f-metric').value,
+          baseline_model: $('f-model').value,
+          max_experiments: Number($('f-budget').value),
+        },
+      });
+      hidePanel('approval');
+      approvalResolver = null;
+      resolve();
+    };
   });
 }
-function show(id) { $(id).classList.remove('hidden'); }
-function hide(id) { $(id).classList.add('hidden'); }
 
-const IRIS = (() => {
-  const rows = ['sepal_length,sepal_width,petal_length,petal_width,species'];
-  const add = (a,b,c,d,s,n) => { for (let i=0;i<n;i++) rows.push(
-    `${(a+i*0.02).toFixed(2)},${(b+i*0.005).toFixed(2)},${(c+i*0.01).toFixed(2)},${(d+i*0.005).toFixed(2)},${s}`); };
-  add(5.0,3.4,1.4,0.2,'setosa',40);
-  add(6.0,2.8,4.5,1.4,'versicolor',40);
-  add(6.6,3.0,5.8,2.1,'virginica',40);
-  return rows.join('\n');
-})();
+async function executeItem(item) {
+  return post('/demo/execute', {
+    session_id: item.sessionId, offline: true,
+    use_jev: $('opt-jev').checked, use_cloud: $('opt-cloud').checked,
+  });
+}
 
 async function post(path, body) {
   const res = await fetch(path, {
@@ -244,146 +358,66 @@ async function post(path, body) {
   return data;
 }
 
-// ① 开始分析
-$('start').addEventListener('click', async () => {
-  const btn = $('start');
-  btn.disabled = true;
-  btn.textContent = '千问正在看数据…';
-  setStep(1);
-  hide('approval'); hide('result'); hide('versions-card'); hide('log-card');
-  show('analysis');
-  $('think-body').innerHTML = '<p class="hint">正在盘点：行列数、缺失、类别分布…</p>';
-  try {
-    const useLocal = $('opt-local').checked;
-    const data = await post('/demo/analyze', {
-      csv_text: IRIS, target: 'species', metric: 'f1_macro', pos_label: '1',
-      use_local_model: useLocal,
-    });
-    sessionId = data.session_id;
-    const thought = data.thought || {};
-    $('think-src').textContent = thought.source === 'local_model' ? '· 本地模型' : '· 规则判断';
-    const bullets = (thought.bullets || []).map((b) => `<li>${b}</li>`).join('');
-    $('think-body').innerHTML = bullets
-      ? `<ul>${bullets}</ul>`
-      : `<p>${thought.text || ''}</p>`;
-    $('think-why').innerHTML = `它建议：<b>${data.suggested.why}</b>`;
+function showPanel(id) { $(id).classList.remove('hidden'); }
+function hidePanel(id) { $(id).classList.add('hidden'); }
 
-    // 填审批默认值
-    $('f-metric').value = data.suggested.metric;
-    $('f-model').value = data.suggested.baseline_model;
-    $('f-budget').value = data.suggested.max_experiments;
-    show('approval');
-    setStep(2);
-    btn.textContent = '重新分析';
-  } catch (error) {
-    $('think-body').innerHTML = `<p class="err">${error.message}</p>`;
-    btn.textContent = '重试';
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-// ② 审批
-$('approve').addEventListener('click', async () => {
-  if (!sessionId) return;
-  const btn = $('approve');
-  btn.disabled = true;
-  btn.textContent = '执行中…';
-  setStep(3);
-  try {
-    await post('/demo/approve', {
-      session_id: sessionId,
-      overrides: {
-        metric: $('f-metric').value,
-        baseline_model: $('f-model').value,
-        max_experiments: Number($('f-budget').value),
-      },
-    });
-    const data = await post('/demo/execute', {
-      session_id: sessionId, offline: true,
-      use_jev: $('opt-jev').checked, use_cloud: $('opt-cloud').checked,
-    });
-    render(data);
-    btn.textContent = '再跑一次';
-  } catch (error) {
-    alert(error.message);
-    btn.textContent = '重试';
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-function render(data) {
+// 渲染某个文件的结果
+function renderCurrent(item, data) {
   const s = data.summary || {};
   $('r-score').textContent = s.best_score != null ? Number(s.best_score).toFixed(4) : '—';
   $('r-model').textContent = s.best_model || '—';
   $('r-ver').textContent = s.evoundo_versions ?? 0;
   $('r-rb').textContent = s.evoundo_rollbacks ?? 0;
-  show('result');
+  showPanel('result');
 
-  // 两条支线
   const b = data.branches || {};
   if (b.jev) {
-    $('b-jev').innerHTML = `
-      <h3>JEV · 决策支 <span class="hint" style="font-weight:400;font-size:12px">${b.jev.cost}</span></h3>
+    $('b-jev').innerHTML = `<h3>JEV · 决策支 <span class="hint" style="font-weight:400;font-size:12px">${b.jev.cost}</span></h3>
       <div class="verdict">${b.jev.verdict}</div>
       <div class="kv">它在问：<b>${b.jev.question}</b></div>
-      <div class="kv">依据：${b.jev.reason}</div>
-      <div class="kv">看到：最好 ${b.jev.signals.best_score} · 停滞 ${b.jev.signals.stalled_rounds} 轮</div>`;
+      <div class="kv">依据：${b.jev.reason}</div>`;
   }
   if (b.cloud) {
-    $('b-cloud').innerHTML = `
-      <h3>DeepSeek · 生成支 <span class="hint" style="font-weight:400;font-size:12px">${b.cloud.cost}</span></h3>
+    $('b-cloud').innerHTML = `<h3>DeepSeek · 生成支 <span class="hint" style="font-weight:400;font-size:12px">${b.cloud.cost}</span></h3>
       <div class="verdict">${b.cloud.status}</div>
       <div class="kv">它在问：<b>${b.cloud.question}</b></div>
       <div class="kv">${b.cloud.reason}</div>`;
   }
 
-  // 版本树
   const experiments = data.experiments || [];
   const best = s.best_score;
   $('versions').innerHTML = experiments.map((exp, i) => {
     const score = exp.validation_score ?? exp.validation_f1 ?? 0;
     const isBest = best != null && Math.abs(score - best) < 1e-9;
-    return `<div class="ver ${isBest ? 'best' : ''}">
-      <div class="idx">v${i+1}</div>
+    return `<div class="ver ${isBest ? 'best' : ''}"><div class="idx">v${i+1}</div>
       <div class="model">${exp.model || '—'}</div>
       <div class="score">${Number(score).toFixed(4)}</div>
       <div class="state">${isBest ? '最优' : '保留'}</div></div>`;
-  }).join('') || '<div class="empty">没有实验记录</div>';
-  show('versions-card');
+  }).join('');
+  showPanel('versions-card');
 
   renderResearch(experiments, s, data.config || {});
 
-  // 事件
   const label = {analyst_profile:'Analyst 看数据', manager_plan:'Manager 定预算',
     scientist_proposal:'Scientist 提方案', experiment:'Experimenter 跑完',
     reviewer_verdict:'Reviewer 判定', rollback:'回滚', finish:'收工'};
-  const events = (data.events || []).filter((e) => label[e.event]);
-  $('log').innerHTML = events.map((e) => {
+  $('log').innerHTML = (data.events || []).filter((e) => label[e.event]).map((e) => {
     let msg = '';
     if (e.event === 'analyst_profile') {
       const p = e.profile || {};
       msg = `行 ${p.rows ?? '?'} · 特征 ${p.features ?? '?'} · ${p.imbalanced ? '不平衡' : '均衡'}`;
-    } else if (e.event === 'manager_plan') {
-      msg = `基线 ${e.plan?.model ?? '?'}`;
-    } else if (e.event === 'scientist_proposal') {
-      msg = `${e.proposal?.model} · ${e.proposal?.hypothesis || ''}`;
-    } else if (e.event === 'experiment') {
-      msg = `${e.model} → ${Number(e.score ?? 0).toFixed(4)}（${e.duration}s）`;
-    } else if (e.event === 'reviewer_verdict') {
-      const v = e.verdict || {};
-      msg = `${v.verdict} · Δ ${Number(v.delta ?? 0) >= 0 ? '+' : ''}${Number(v.delta ?? 0).toFixed(4)}`;
-    } else if (e.event === 'rollback') {
-      msg = `退回 ${e.to_version}（${e.reason}）`;
-    } else if (e.event === 'finish') {
-      msg = `停止：${e.summary?.stop_reason ?? '?'}`;
-    }
+    } else if (e.event === 'manager_plan') msg = `基线 ${e.plan?.model ?? '?'}`;
+    else if (e.event === 'scientist_proposal') msg = `${e.proposal?.model} · ${e.proposal?.hypothesis || ''}`;
+    else if (e.event === 'experiment') msg = `${e.model} → ${Number(e.score ?? 0).toFixed(4)}`;
+    else if (e.event === 'reviewer_verdict') { const v = e.verdict || {}; msg = `${v.verdict} · Δ ${Number(v.delta ?? 0).toFixed(4)}`; }
+    else if (e.event === 'rollback') msg = `退回 ${e.to_version}`;
+    else if (e.event === 'finish') msg = `停止：${e.summary?.stop_reason ?? '?'}`;
     return `<div><span class="tag">${label[e.event]}</span><span>${msg}</span></div>`;
   }).join('');
-  show('log-card');
+  showPanel('log-card');
 }
 
+// ---------- 研究数据图表 ----------
 function renderResearch(experiments, summary, config) {
   const scores = experiments.map((e) => Number(e.validation_score ?? e.validation_f1 ?? 0));
   const best = summary.best_score != null ? Number(summary.best_score) : null;
@@ -392,31 +426,24 @@ function renderResearch(experiments, summary, config) {
   $('research-rows').innerHTML = experiments.map((exp, i) => {
     const score = scores[i];
     const isBest = best != null && Math.abs(score - best) < 1e-9;
-    const params = JSON.stringify(exp.parameters || {});
-    const note = exp.hypothesis || exp.expected_direction || '';
-    const verdict = exp.falsifier ? `证伪条件：${exp.falsifier}` : '';
+    const note = exp.hypothesis || '';
     return `<tr style="${isBest ? 'background:#f2fbf4;font-weight:600' : ''}">
       <td style="padding:8px;border-bottom:1px solid var(--line)">v${i+1}</td>
       <td style="padding:8px;border-bottom:1px solid var(--line)">${exp.model || '—'}</td>
-      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${params}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${JSON.stringify(exp.parameters || {})}</td>
       <td style="padding:8px;border-bottom:1px solid var(--line);text-align:right">${score.toFixed(4)}</td>
       <td style="padding:8px;border-bottom:1px solid var(--line);text-align:right;color:var(--muted)">${Number(exp.duration_seconds ?? 0).toFixed(2)}s</td>
-      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${note}${verdict ? '<br>' + verdict : ''}</td>
+      <td style="padding:8px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">${note}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty">没有实验</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty">跑一次才有数据</td></tr>';
 
   const gap = best != null && scores.length ? best - scores[0] : null;
-  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
   $('research-summary').innerHTML = `
-    <b>这次研究的数据</b><br>
-    总轮数 ${scores.length} ·
-    最佳 ${best != null ? best.toFixed(4) : '—'} ·
+    总轮数 ${scores.length} · 最佳 ${best != null ? best.toFixed(4) : '—'} ·
     第一轮 ${scores.length ? scores[0].toFixed(4) : '—'} ·
     ${gap != null && gap > 0 ? `提升 <b style="color:var(--good)">+${gap.toFixed(4)}</b>` : '没有提升'} ·
-    平均 ${avg.toFixed(4)} ·
-    回滚 ${summary.evoundo_rollbacks ?? 0} 次 ·
-    测试集 ${summary.test_evaluated ? '已评测' : '未触碰'}
-    <br><span style="font-size:12px">指标 ${config.metric || '—'} · 预算 ${config.max_experiments ?? '—'} 次 · 基线 ${config.baseline_model || '—'}</span>`;
+    回滚 ${summary.evoundo_rollbacks ?? 0} 次 · 测试集 ${summary.test_evaluated ? '已评测' : '未触碰'}
+    <br><span style="font-size:12px">指标 ${config.metric || '—'} · 预算 ${config.max_experiments ?? '—'} 次</span>`;
 }
 
 function drawChart(scores, best) {
@@ -431,90 +458,95 @@ function drawChart(scores, best) {
   const yMax = Math.max(1, Math.ceil(Math.max(...scores, best ?? 0) * 10) / 10);
   const x = (i) => padL + (scores.length === 1 ? plotW / 2 : (i / (scores.length - 1)) * plotW);
   const y = (v) => padT + plotH - (v / yMax) * plotH;
-
   const parts = [];
   for (let k = 0; k <= 4; k++) {
-    const v = (yMax * k) / 4;
-    const yy = y(v);
-    parts.push(`<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="#eeeae5" stroke-width="1"/>`);
+    const v = (yMax * k) / 4, yy = y(v);
+    parts.push(`<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="#eeeae5"/>`);
     parts.push(`<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" fill="#9a928a" font-size="11">${v.toFixed(2)}</text>`);
   }
-  scores.forEach((_, i) => {
-    parts.push(`<text x="${x(i)}" y="${H - 8}" text-anchor="middle" fill="#9a928a" font-size="11">v${i+1}</text>`);
-  });
-
+  scores.forEach((_, i) => parts.push(
+    `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" fill="#9a928a" font-size="11">v${i+1}</text>`));
   if (best != null) {
     let prev = -Infinity;
-    const stepPts = scores.map((s, i) => {
-      if (s > prev) prev = s;
-      return `${x(i)},${y(prev)}`;
-    });
-    parts.push(`<polyline points="${stepPts.join(' ')}" fill="none" stroke="#15803d"
-      stroke-width="1.5" stroke-dasharray="5 4" opacity="0.75"/>`);
+    const step = scores.map((s, i) => { if (s > prev) prev = s; return `${x(i)},${y(prev)}`; });
+    parts.push(`<polyline points="${step.join(' ')}" fill="none" stroke="#15803d" stroke-width="1.5" stroke-dasharray="5 4" opacity=".75"/>`);
   }
-
-  const areaPts = [`${x(0)},${y(0)}`, ...scores.map((s, i) => `${x(i)},${y(s)}`), `${x(scores.length-1)},${y(0)}`];
-  parts.push(`<polygon points="${areaPts.join(' ')}" fill="#b45309" opacity="0.07"/>`);
-  parts.push(`<polyline points="${scores.map((s, i) => `${x(i)},${y(s)}`).join(' ')}"
-    fill="none" stroke="#b45309" stroke-width="2.5" stroke-linejoin="round"/>`);
-
+  parts.push(`<polyline points="${scores.map((s, i) => `${x(i)},${y(s)}`).join(' ')}" fill="none" stroke="#b45309" stroke-width="2.5"/>`);
   scores.forEach((s, i) => {
     const isBest = best != null && Math.abs(s - best) < 1e-9;
-    parts.push(`<circle cx="${x(i)}" cy="${y(s)}" r="${isBest ? 5 : 4}"
-      fill="${isBest ? '#15803d' : '#b45309'}" stroke="#fff" stroke-width="1.5"/>`);
-    parts.push(`<text x="${x(i)}" y="${y(s) - 10}" text-anchor="middle"
-      fill="${isBest ? '#15803d' : '#6b6560'}" font-size="11" font-weight="600">${s.toFixed(3)}</text>`);
+    parts.push(`<circle cx="${x(i)}" cy="${y(s)}" r="${isBest ? 5 : 4}" fill="${isBest ? '#15803d' : '#b45309'}" stroke="#fff" stroke-width="1.5"/>`);
+    parts.push(`<text x="${x(i)}" y="${y(s) - 10}" text-anchor="middle" fill="${isBest ? '#15803d' : '#6b6560'}" font-size="11" font-weight="600">${s.toFixed(3)}</text>`);
   });
-
   svg.innerHTML = parts.join('');
 }
 
-function initializeDemo() {
-  const needs = {
-    'opt-jev': {title: 'TypeSafe JEV API Key', hint: '用于「决策支」判断值不值得调用云端。', storage: 'jevKey'},
-    'opt-cloud': {title: 'DeepSeek API Key', hint: '用于「生成支」真正出手。会按 token 计费。', storage: 'deepseekKey'},
-  };
-  Object.entries(needs).forEach(([id, cfg]) => {
-    const box = $(id);
-    if (!box) return;
-    box.addEventListener('change', () => {
-      if (!box.checked) return;
-      if (sessionStorage.getItem(cfg.storage)) return;
-      $('key-title').textContent = cfg.title;
-      $('key-hint').textContent = cfg.hint;
-      $('key-input').value = '';
-      $('key-dialog').dataset.target = id;
-      $('key-dialog').showModal();
-    });
-  });
+// ---------- 事件绑定 ----------
+$('dropzone').addEventListener('click', () => $('file-input').click());
+$('file-input').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+['dragenter','dragover'].forEach((n) => $('dropzone').addEventListener(n, (e) => {
+  e.preventDefault(); $('dropzone').classList.add('dragging');
+}));
+['dragleave','drop'].forEach((n) => $('dropzone').addEventListener(n, (e) => {
+  e.preventDefault(); $('dropzone').classList.remove('dragging');
+  if (n === 'drop') addFiles(e.dataTransfer.files);
+}));
 
-  $('key-cancel').addEventListener('click', () => {
-    const dialog = $('key-dialog');
-    const target = dialog.dataset.target;
-    if (target) $(target).checked = false;
-    dialog.close();
-  });
-  $('key-save').addEventListener('click', () => {
-    const dialog = $('key-dialog');
-    const target = dialog.dataset.target;
-    const value = $('key-input').value.trim();
-    if (!value) return;
-    sessionStorage.setItem(target === 'opt-jev' ? 'jevKey' : 'deepseekKey', value);
-    dialog.close();
-  });
-
-  const toggleBtn = $('toggle-research');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      const detail = $('research-detail');
-      const hidden = detail.classList.toggle('hidden');
-      toggleBtn.textContent = hidden ? '展开明细' : '收起明细';
-    });
+$('queue').addEventListener('click', (e) => {
+  const del = e.target.dataset.del;
+  if (del !== undefined) {
+    queue.splice(Number(del), 1);
+    renderQueue();
+    return;
   }
-}
+  const row = e.target.closest('.qitem');
+  if (row && row.dataset.idx !== undefined) {
+    const item = queue[Number(row.dataset.idx)];
+    if (item.result) renderCurrent(item, item.result);
+  }
+});
 
-setStep(1);
-initializeDemo();
+$('start-all').addEventListener('click', runQueue);
+$('clear-all').addEventListener('click', () => { queue.length = 0; current = null; renderQueue(); });
+
+$('approve').addEventListener('click', () => {
+  if (approvalResolver) approvalResolver();
+});
+
+$('toggle-research').addEventListener('click', () => {
+  const hidden = $('research-detail').classList.toggle('hidden');
+  $('toggle-research').textContent = hidden ? '展开明细' : '收起明细';
+});
+
+// key 对话框
+const needsKey = {
+  'opt-jev': {title:'TypeSafe JEV API Key', hint:'用于「决策支」判断值不值得调云端。', key:'jevKey'},
+  'opt-cloud': {title:'DeepSeek API Key', hint:'用于「生成支」真正出手，按 token 计费。', key:'deepseekKey'},
+};
+Object.entries(needsKey).forEach(([id, cfg]) => {
+  $(id).addEventListener('change', () => {
+    if (!$(id).checked) return;
+    if (sessionStorage.getItem(cfg.key)) return;
+    $('key-title').textContent = cfg.title;
+    $('key-hint').textContent = cfg.hint;
+    $('key-input').value = '';
+    $('key-dialog').dataset.target = id;
+    $('key-dialog').showModal();
+  });
+});
+$('key-cancel').addEventListener('click', () => {
+  const t = $('key-dialog').dataset.target;
+  if (t) $(t).checked = false;
+  $('key-dialog').close();
+});
+$('key-save').addEventListener('click', () => {
+  const t = $('key-dialog').dataset.target;
+  const v = $('key-input').value.trim();
+  if (!v) return;
+  sessionStorage.setItem(t === 'opt-jev' ? 'jevKey' : 'deepseekKey', v);
+  $('key-dialog').close();
+});
+
+renderQueue();
 drawChart([], null);
 </script>
 </body>
