@@ -72,6 +72,11 @@ def create_app(data_directory=None):
     def workbench():
         return FileResponse(static_root / 'index.html')
 
+    @app.get('/demo', include_in_schema=False)
+    def demo_page():
+        """现场演示页：一屏讲完整条链，自带示例数据，不依赖模型服务。"""
+        return FileResponse(static_root / 'demo.html')
+
     def invoke(action):
         try:
             return action()
