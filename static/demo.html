@@ -92,7 +92,6 @@
 <div class="wrap">
   <header>
     <h1>EvoResearch</h1>
-    <p>本地千问先盘点，人审过之后才开跑 —— 该省的省，该花的才花。</p>
   </header>
 
   <div class="stage">
@@ -177,15 +176,15 @@
     <div class="versions" id="versions"></div>
   </section>
 
-  <section class="card hidden" id="research-card">
+  <section class="card" id="research-card">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <h2 style="margin:0">研究数据 · 给我们自己看的</h2>
+      <h2 style="margin:0">研究数据</h2>
       <button id="toggle-research" class="secondary" type="button">展开明细</button>
     </div>
 
     <!-- 折线图：每一轮的验证分数 -->
     <div id="chart-wrap" style="margin-top:18px">
-      <div class="hint" style="margin-bottom:8px">每一轮的验证分数（折线 = 实际走势，虚线 = 历史最优）</div>
+      <div class="hint" style="margin-bottom:8px">每一轮的验证分数（实线 = 实际走势，虚线 = 历史最优）</div>
       <svg id="chart" viewBox="0 0 720 220" style="width:100%;height:220px"></svg>
     </div>
 
@@ -199,9 +198,9 @@
           <th style="text-align:right;padding:8px;border-bottom:1px solid var(--line)">耗时</th>
           <th style="text-align:left;padding:8px;border-bottom:1px solid var(--line)">假设 / 结果</th>
         </tr></thead>
-        <tbody id="research-rows"></tbody>
+        <tbody id="research-rows"><tr><td colspan="6" class="empty">跑一次才有数据</td></tr></tbody>
       </table>
-      <div id="research-summary" class="why" style="margin-top:14px"></div>
+      <div id="research-summary" class="why" style="margin-top:14px">跑一次研究，这里会出现每一轮的真实分数。</div>
     </div>
   </section>
 
@@ -355,7 +354,6 @@ function render(data) {
   show('versions-card');
 
   renderResearch(experiments, s, data.config || {});
-  show('research-card');
 
   // 事件
   const label = {analyst_profile:'Analyst 看数据', manager_plan:'Manager 定预算',
@@ -517,6 +515,7 @@ function initializeDemo() {
 
 setStep(1);
 initializeDemo();
+drawChart([], null);
 </script>
 </body>
 </html>
