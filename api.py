@@ -40,6 +40,30 @@ class FiveRolesInput(BaseModel):
     offline: bool = True    # True: 不依赖 Ollama，用确定性 proposer（演示兜底）
 
 
+class DemoAnalyzeInput(BaseModel):
+    """第一步：让千问盘数据，返回它的思考，等人审批。"""
+    model_config = ConfigDict(extra='forbid')
+    csv_text: str = Field(min_length=1, max_length=2_000_000)
+    target: str = Field(min_length=1, max_length=200)
+    metric: str = 'f1_macro'
+    pos_label: str = Field(default='1', max_length=200)
+    use_local_model: bool = False    # True 才真的调千问说话（慢），否则用规则话术
+
+
+class DemoApproveInput(BaseModel):
+    """第二步：人对千问的判断做修改，或直接同意。"""
+    model_config = ConfigDict(extra='forbid')
+    session_id: str = Field(min_length=1, max_length=64)
+    overrides: dict = Field(default_factory=dict)
+
+
+class DemoExecuteInput(BaseModel):
+    """第三步：按人确认过的配置真跑，返回两条支线的思考。"""
+    model_config = ConfigDict(extra='forbid')
+    session_id: str = Field(min_length=1, max_length=64)
+    offline: bool = True
+
+
 class ResearchInput(BaseModel):
     baseline_policy: Literal["logreg", "fixed_search"] = "logreg"
     model_config = ConfigDict(extra='forbid')
@@ -114,6 +138,42 @@ def create_app(data_directory=None):
             path.unlink(missing_ok=True)
             raise
         return {'task_id': task_id, 'state': 'open', 'risk_report': store.show(task_id)['risk_report']}
+
+    @app.post('/demo/analyze', status_code=201)
+    def demo_analyze(body: DemoAnalyzeInput):
+        """第一步：千问盘点数据，返回它的思考。此时还没跑任何实验。"""
+        import demo_flow
+        from orchestrator import LocalQwenClient
+        proposer = None
+        if body.use_local_model:
+            proposer = LocalQwenClient()
+        try:
+            return demo_flow.start(body.csv_text, body.target, body.metric,
+                                   body.pos_label, proposer=proposer)
+        except Exception as exc:                    # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)[:300]) from None
+
+    @app.post('/demo/approve')
+    def demo_approve(body: DemoApproveInput):
+        """第二步：人改配置或直接同意。同意之前不会跑实验。"""
+        import demo_flow
+        try:
+            return demo_flow.approve(body.session_id, body.overrides)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+
+    @app.post('/demo/execute', status_code=201)
+    def demo_execute(body: DemoExecuteInput):
+        """第三步：真跑实验，返回 JEV 与云端两支各自的判断。"""
+        import demo_flow
+        try:
+            return demo_flow.execute(body.session_id, offline=body.offline)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except Exception as exc:                    # noqa: BLE001
+            raise HTTPException(status_code=400, detail=str(exc)[:300]) from None
 
     @app.post('/research/five-roles', status_code=201)
     def run_five_roles(body: FiveRolesInput):
