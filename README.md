@@ -1,3 +1,7 @@
+# 原版千问 · 当前提交版
+
+安装及演示请先阅读 [提交说明](docs/qwen-demo-submission.md)。保留原版千问3B，不使用已撤下的 v24 包。
+
 > Website now defaults to token-saving mode. Real measured results and quality limits: [token-economy.md](docs/token-economy.md).
 
 # V23 current entry
@@ -284,3 +288,7 @@ Frozen transfer evidence is in docs/evaluation/frozen_transfer_20261113/REPORT.m
 Use the workbench download buttons or GET /tasks/{id}/export?format=markdown|json|zip. ZIP includes REPORT.md, manifest.json and replay_validation.py. Export is blocked during active research/finalization, never fits models or evaluates test data, and omits server CSV paths and private job tokens. Unfinished tasks are explicitly labeled as having no successful final test. Historical leakage risk suppresses the best-validation conclusion while retaining observed records. Sources distinguish recorded rule/local/cloud proposals; missing provenance is labeled unresolved.
 
 To replay successful validation configurations from an unzipped bundle, use the project environment: python replay_validation.py --project PATH_TO_SOURCE --csv ORIGINAL_CSV. It checks dataset SHA256 and dependency versions, applies recorded feature decisions, and never finalizes. Raw data and trained estimator files are not included. Historical tasks lack persisted source revision, so exact reproduction across source versions is not guaranteed. Unknown usage/cost is not represented as free.
+
+
+## 原版千问可提交 Demo
+保留原版千问3B、六组数据和主研究架构；最小修复及安装/演示说明见 [docs/qwen-demo-submission.md](docs/qwen-demo-submission.md)。首次安装运行 Setup.cmd；之后 Start-Local-Research.cmd。Ollama 需安装原版 qwen2.5:3b-instruct-q4_K_M。云端高级站可能收费，转交必须实际训练才计结果。

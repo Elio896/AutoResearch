@@ -1,5 +1,8 @@
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
+from strategy_store import StrategyStore
 
 from fastapi.testclient import TestClient
 from api import create_legacy_app as create_app
@@ -9,7 +12,12 @@ from tools.asgi_test_runtime import asgi_test_runtime
 class ShowcaseTests(unittest.TestCase):
     def test_real_feedback_next_session_revoke_and_strategy_restore(self):
         with tempfile.TemporaryDirectory() as directory, asgi_test_runtime():
-            with TestClient(create_app(directory)) as client:
+            strategy=Path(directory)/'test-strategy.json'
+            versions=StrategyStore(strategy)
+            versions.bootstrap({'planning_prompt':'original test fixture'})
+            candidate=versions.propose({'planning_prompt':'updated test fixture'},reason='test fixture')
+            versions.activate(candidate['strategy_id'],checks={'fixture':True},jev={'decision':'upgrade','source':'test_fixture'})
+            with patch('showcase.VERIFIED_STRATEGY',strategy),TestClient(create_app(directory)) as client:
                 self.assertEqual(client.get('/showcase').status_code,200)
                 self.assertEqual(client.get('/static/showcase.js').status_code,200)
                 initial=client.post('/showcase/runs',json={})

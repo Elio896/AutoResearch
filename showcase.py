@@ -13,6 +13,8 @@ from research_system import save
 from tools.evaluate_user_corrections import run_case
 
 
+VERIFIED_STRATEGY=Path(__file__).parent/'artifacts/topic-delivery-verified/strategy.json'
+
 class DemoFeedback(BaseModel):
     model_config = ConfigDict(extra='forbid')
     text: str = Field(min_length=3, max_length=2000)
@@ -133,7 +135,7 @@ def register_showcase(app, root):
         try:
             current=state(run_id)
             if current.get('strategy_rollback'): raise HTTPException(409,'Already restored; history is retained.')
-            original=source/'artifacts/topic-delivery-verified/strategy.json'
+            original=VERIFIED_STRATEGY
             if not original.is_file(): raise HTTPException(409,'No verified strategy evidence available.')
             import shutil
             from strategy_store import StrategyStore

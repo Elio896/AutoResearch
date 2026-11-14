@@ -10,7 +10,7 @@ from app_version import APP_VERSION
 
 def source_fingerprint():
     base=Path(__file__).parent
-    files=['app_version.py','ml_api.py','ml_engine.py','light_model.py','model_budget.py','failure_recovery.py','billing_actual.py','answer_evidence.py','research_context.py','comparison_benchmark.py','data_source.py','local_catalog.py','association_analysis.py','research_deliverables.py','strategy_store.py','experiment_lessons.py']
+    files=['qwen_demo.py','app_version.py','ml_api.py','ml_engine.py','light_model.py','model_budget.py','failure_recovery.py','billing_actual.py','answer_evidence.py','research_context.py','comparison_benchmark.py','data_source.py','local_catalog.py','association_analysis.py','research_deliverables.py','strategy_store.py','experiment_lessons.py']
     return hashlib.sha256(b''.join(f.encode()+b'\0'+(base/f).read_bytes()+b'\0' for f in files)).hexdigest()
 
 LOADED_SOURCE_FINGERPRINT=source_fingerprint()
@@ -128,58 +128,63 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
         return response
 
 
-    # --- evolution demo (local-only, zero API cost) ---
-    import subprocess as _sp
-    _evo = {'proc': None, 'state': 'idle', 'started': None, 'log': ''}
+    # Original Qwen demo, with isolated memory and actual high-station execution.
+    from qwen_demo import DemoStore,run as run_qwen_demo
+    demo_store=DemoStore(root/'demo')
+    demo_lock=threading.Lock()
+    recovered=demo_store.interrupted('service_restarted_before_completion')
+    demo_state={'state':recovered.get('state','idle'),'started':None}
 
-    def _evo_script():
-        return Path(__file__).parent / 'tools' / 'evolution_demo.py'
-
-    def _evo_python():
-        return sys.executable
+    class DemoInput(BaseModel):
+        model_config=ConfigDict(extra='forbid')
+        mode:str=Field(default='mixed',pattern=r'^(mixed|clean|faulty)$')
+        rounds:int=Field(default=3,ge=1,le=3,strict=True)
+        reset:bool=True
+        max_calls:int=Field(default=36,ge=1,le=40,strict=True)
+        max_tokens:int=Field(default=60000,ge=1000,le=100000,strict=True)
+        max_seconds:int=Field(default=300,ge=10,le=600,strict=True)
 
     @app.get('/ml/evolution/status')
     def evolution_status():
-        proc = _evo['proc']
-        if proc is not None and proc.poll() is not None:
-            _evo['state'] = 'done' if proc.returncode == 0 else 'failed'
-            _evo['proc'] = None
-        elapsed = ''
-        if _evo['state'] == 'running' and _evo['started']:
-            elapsed = '%ds' % int(time.time() - _evo['started'])
-        return {'state': _evo['state'], 'elapsed_hint': elapsed,
-                'log_tail': (_evo['log'] or '')[-400:]}
+        return {**demo_state,'elapsed_hint':str(int(time.monotonic()-demo_state['started']))+'s' if demo_state['started'] else '',
+                'summary':demo_store.report().get('summary',{}),'scope':'demo_only'}
+
+    @app.get('/ml/evolution/report')
+    def evolution_report():return demo_store.report()
+
+    @app.get('/ml/evolution/export')
+    def evolution_export():return JSONResponse(demo_store.report(),headers={'Content-Disposition':'attachment; filename="qwen-demo-report.json"'})
+
+    @app.get('/ml/evolution/predictions/{step}')
+    def evolution_predictions(step:int):
+        r=demo_store.report()
+        if not any(x['step']==step and x.get('delivered') for x in r.get('steps',[])):raise HTTPException(404,'No predictions for this step')
+        return FileResponse(demo_store.root/'runs'/r['run_id']/('step-'+str(step))/'predictions.csv',filename='qwen-predictions-'+str(step)+'.csv',media_type='text/csv')
+
+    def execute_demo(body):
+        try:
+            r=run_qwen_demo(demo_store,Path(__file__).parent,mode=body.mode,rounds=body.rounds,reset=body.reset,
+                high_factory=lambda:factory()['high'],limits=ModelLimits(body.max_calls,body.max_tokens,body.max_seconds),price_feed=price_feed)
+            demo_state['state']=r['state']
+        except Exception as exc:
+            demo_store.interrupted('execution_exception_'+type(exc).__name__)
+            demo_state.update(state='failed',reason='演示未完成，已保留记录；请检查本地千问、高级模型设置和预算。')
+        finally:demo_lock.release()
 
     @app.post('/ml/evolution/run')
-    def evolution_run(body: dict = Body(default={})):
-        if _evo['proc'] is not None and _evo['proc'].poll() is None:
-            raise HTTPException(409, 'A demo is already running.')
-        mode = (body or {}).get('mode', 'mixed')
-        if mode not in ('mixed', 'faulty', 'clean'):
-            raise HTTPException(422, 'mode must be mixed, faulty or clean.')
-        script = _evo_script()
-        args = [_evo_python(), str(script), '--reset']
-        if mode == 'mixed':
-            args = [_evo_python(), str(script.parent / 'evolution_mixed.py'), '--reset']
-        elif mode == 'faulty':
-            args.append('--faulty')
-        log_path = root / 'evolution-demo.log'
-        with open(log_path, 'w', encoding='utf-8') as handle:
-            _evo['proc'] = _sp.Popen(args, cwd=str(Path(__file__).parent), stdout=handle,
-                                     stderr=_sp.STDOUT, text=True)
-        _evo['state'] = 'running'
-        _evo['started'] = time.time()
-        _evo['log'] = str(log_path)
-        return {'state': 'running', 'mode': mode}
+    def evolution_run(body:DemoInput,background_tasks:BackgroundTasks):
+        if not demo_lock.acquire(False):raise HTTPException(409,'A demo is already running.')
+        demo_state.update(state='running',started=time.monotonic())
+        background_tasks.add_task(execute_demo,body)
+        return {'state':'running','mode':body.mode,'model':'qwen2.5:3b-instruct-q4_K_M','scope':'demo_only'}
 
     @app.post('/ml/evolution/rollback')
     def evolution_rollback():
-        script = Path(__file__).parent / 'tools' / 'rollback_capability.py'
-        out = _sp.run([_evo_python(), str(script), '--latest'], capture_output=True, text=True,
-                      cwd=str(Path(__file__).parent))
-        if out.returncode != 0:
-            raise HTTPException(400, (out.stderr or out.stdout or 'rollback failed')[:200])
-        return {'restored': (out.stdout or '').strip()[-160:]}
+        if not demo_lock.acquire(False):raise HTTPException(409,'Wait for the current demo to stop.')
+        try:
+            r=demo_store.rollback();demo_state['state']='rolled_back';return r
+        except ValueError as exc:raise HTTPException(400,str(exc)) from None
+        finally:demo_lock.release()
 
     @app.get('/ml/version')
     def version(): return {'version':APP_VERSION,'restart_required':source_fingerprint()!=LOADED_SOURCE_FINGERPRINT,'source_fingerprint':LOADED_SOURCE_FINGERPRINT,'asset_fingerprint':asset_fingerprint(),'auto_evolution_enabled':False,'data_source':'local_catalog','catalog_count':len(LocalCatalog().records())}

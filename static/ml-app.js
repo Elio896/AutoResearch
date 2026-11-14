@@ -50,7 +50,7 @@ function renderWorkflow(state,events){if(lastWorkflowRun!==run){for(const role o
 api('/ml/config').then(c=>{for(const r of flowRoles)if(c.roles?.[r])$('model-'+r).textContent=c.roles[r];}).catch(()=>{});
 
 $('start').disabled=true;
-api('/ml/version').then(v=>{backendReady=v.version==='ml-chain-23'&&!v.restart_required;$('start').disabled=!backendReady;if(!backendReady){$('backend-warning').hidden=false;$('backend-warning').textContent='当前后台仍是 '+v.version+'，历史最佳方案和经验功能未加载。请运行 Start-Local-Research.cmd 更新服务，刷新后此提示会消失。';$('status').textContent='后台需要更新';}}).catch(()=>{$('backend-warning').hidden=false;$('backend-warning').textContent='无法核对后台版本，已暂停提交，避免再次执行旧流程。';});
+api('/ml/version').then(v=>{backendReady=v.version==='ml-chain-23-qwen-demo1'&&!v.restart_required;$('start').disabled=!backendReady;if(!backendReady){$('backend-warning').hidden=false;$('backend-warning').textContent='当前后台仍是 '+v.version+'，历史最佳方案和经验功能未加载。请运行 Start-Local-Research.cmd 更新服务，刷新后此提示会消失。';$('status').textContent='后台需要更新';}}).catch(()=>{$('backend-warning').hidden=false;$('backend-warning').textContent='无法核对后台版本，已暂停提交，避免再次执行旧流程。';});
 
 api('/ml/catalog').then(c=>{$('catalog-note').textContent='本地可用数据：'+c.datasets.map(d=>d.aliases.find(a=>/[\u4e00-\u9fff]/.test(a))||d.name).join('、')+'。也可直接上传 CSV。';}).catch(()=>{});
 
@@ -140,12 +140,12 @@ let EVO_DATA=null, EVO_METRIC='tokens';
 const EVO_ROUND_METRICS={
   tokens:{label:'每轮 token 消耗量',short:'token',color:'#b7ff50',
           pick:g=>g.reduce((a,s)=>a+(s.tokens||0),0),fmt:v=>String(Math.round(v)),unit:'token',
-          note:'这一轮 7 个任务真正消耗的 token 合计；转回的步骤不调用本地模型，记为 0'},
+          note:'该轮千问与高级站的已知 Token 合计；未知用量不按零计费'},
   seconds:{label:'每轮耗时',short:'秒',color:'#7fd1ff',
            pick:g=>g.reduce((a,s)=>a+(s.seconds||0),0),fmt:v=>v.toFixed(1),unit:'秒',
            note:'这一轮所有步骤的墙钟时间合计'},
   failures:{label:'每轮错误步骤',short:'次',color:'#ff8a5c',
-            pick:g=>g.filter(s=>s.attempted&&!s.ok).length,fmt:v=>String(Math.round(v)),unit:'次',
+            pick:g=>g.filter(s=>!s.ok).length,fmt:v=>String(Math.round(v)),unit:'次',
             note:'这一轮里本地尝试失败的步数；能力表学会之后不再增加'},
   evidence:{label:'有证据路由',short:'%',color:'#ffd166',
             pick:g=>g.filter(s=>s.decision!=='unproven_explore').length/g.length*100,fmt:v=>Math.round(v)+'%',unit:'%',
@@ -157,8 +157,8 @@ function evoRoundChart(steps){
   const W=680,H=250,L=72,R=24,T=32,B=58;
   const rounds=[...new Set(steps.map(s=>s.round))];
   const data=rounds.map(r=>{const g=steps.filter(s=>s.round===r);
-    return {round:r,value:metric.pick(g),fails:g.filter(s=>s.attempted&&!s.ok).length,
-            calls:g.filter(s=>s.attempted).length,tokens:g.reduce((a,s)=>a+(s.tokens||0),0)};});
+    return {round:r,value:metric.pick(g),fails:g.filter(s=>!s.ok).length,
+            calls:g.length,tokens:g.reduce((a,s)=>a+(s.tokens||0),0)};});
   const max=Math.max(1,...data.map(d=>d.value));
   const bw=(W-L-R)/data.length;
   let out='';
@@ -167,10 +167,11 @@ function evoRoundChart(steps){
     out+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="#16402a"/>`;
     out+=`<text x="${L-8}" y="${y+4}" fill="#7fbf98" font-size="11" text-anchor="end">${metric.fmt(max*f)}</text>`;
   });
+  if(data.length>1){const pts=data.map((d,i)=>`${L+(i+.5)*bw},${H-B-(H-T-B)*d.value/max}`).join(' ');out+=`<polyline points="${pts}" fill="none" stroke="${metric.color}" stroke-width="3" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px ${metric.color})"/>`;}
   data.forEach((d,i)=>{
     const h=(H-T-B)*(d.value/max);
     const x=L+i*bw+bw*0.22,w=bw*0.56,y=H-B-h;
-    out+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${metric.color}" opacity="0.85"/>`;
+    out+=`<circle cx="${x+w/2}" cy="${y}" r="5" fill="${metric.color}"/>`;
     out+=`<text x="${x+w/2}" y="${y-10}" fill="${metric.color}" font-size="15" font-weight="700" text-anchor="middle">${metric.fmt(d.value)}</text>`;
     out+=`<text x="${x+w/2}" y="${H-B+22}" fill="#9fd6b3" font-size="12" text-anchor="middle">第 ${d.round} 轮</text>`;
     out+=`<text x="${x+w/2}" y="${H-B+38}" fill="#7fbf98" font-size="11" text-anchor="middle">${d.tokens} token · 失败 ${d.fails}/${d.calls}</text>`;
@@ -182,21 +183,20 @@ function evoRoundChart(steps){
 async function renderEvolution(){
   if(!document.getElementById('evolution-card')) return;
   let data;
-  try{data=await (await fetch('/static/evolution.json',{cache:'no-store'})).json();}catch(e){return;}
+  try{data=await (await fetch('/ml/evolution/report',{cache:'no-store'})).json();}catch(e){return;}
   const steps=data.steps||[];
   const note=document.getElementById('evo-note');
-  if(!steps.length){note.textContent='数据为空。';return;}
+  if(!steps.length){note.textContent='尚无本次演示数据；运行时使用原版千问3B。';document.getElementById('evo-chart').innerHTML='';document.getElementById('evo-costs').replaceChildren();document.getElementById('evo-rows').getElementsByTagName('tbody')[0].replaceChildren();return;}
   EVO_DATA=data;
   const s=data.summary||{};
-  note.textContent='模型 '+(data.model||'')+' · 模式 '+(data.mode_label||'')+' · '+steps.length+' 步 / '+
-    (data.rounds||0)+' 轮 · 通过 '+(s.passed||0)+' · 失败 '+(s.wasted_local_calls||0)+
-    ' 次 · 转交 '+(s.delegated||0)+' 次 · token 合计 '+(s.tokens||0);
+  note.textContent='原版千问 '+(data.model||'')+' · '+steps.length+'/'+s.tasks+' 步 · '+new Set(steps.map(x=>x.round)).size+'/'+data.rounds+' 轮 · 实测达标 '+s.passed+' · 未达标/失败 '+s.failed+' · 预算未执行 '+s.unexecuted+' · 高站实际调用 '+s.delegated+' · 已知 Token '+s.tokens+' · 未知调用 '+s.unknown_usage_calls+' · 官方估算 '+(typeof s.official_usd==='number'?'$'+s.official_usd.toFixed(6):'待对账');
+  document.getElementById('evo-costs').replaceChildren(...(data.usage?.costs?.models||[]).map(m=>{const tr=document.createElement('tr');for(const value of [m.model+' / '+m.calls,m.known_input_tokens,m.known_output_tokens,typeof m.calculated_usd==='number'?'$'+m.calculated_usd.toFixed(8):'未知/待对账']){const td=document.createElement('td');td.textContent=value;tr.append(td);}return tr;}));
   document.getElementById('evo-chart').innerHTML=evoRoundChart(steps);
   document.getElementById('evo-caption').textContent=EVO_ROUND_METRICS[EVO_METRIC].note;
   document.querySelectorAll('.evo-tab').forEach(b=>b.classList.toggle('is-on',b.dataset.metric===EVO_METRIC));
   document.getElementById('evo-rows').getElementsByTagName('tbody')[0].innerHTML=steps.map(x=>
     `<tr><td>${x.step}</td><td>${x.round}</td><td>${x.dataset}</td><td>${x.decision}</td>`+
-    `<td>${x.attempted?(x.ok?'通过':'失败'):'转交'}</td><td>${x.seconds}s</td><td>${x.tokens||0}</td></tr>`).join('');
+    `<td>${x.status||(x.ok?'通过':'未完成')}</td><td>${x.seconds}s</td><td>${x.tokens||0}</td><td>${x.delivered?`<a href="/ml/evolution/predictions/${x.step}">下载CSV</a>`:"—"}</td></tr>`).join('');
 }
 
 async function evolutionCall(path,body){
@@ -209,7 +209,8 @@ async function pollEvolution(){
   for(let i=0;i<180;i++){
     const s=await (await fetch('/ml/evolution/status',{cache:'no-store'})).json();
     status.textContent=s.state==='running'?('测验中… '+s.elapsed_hint):(s.state==='done'?'测验完成':'测验'+s.state);
-    if(s.state!=='running'){await renderEvolution();return;}
+    await renderEvolution();
+    if(s.state!=='running')return;
     await new Promise(r=>setTimeout(r,2000));
   }
   status.textContent='测验超时，看日志。';
@@ -222,4 +223,4 @@ function bindEvolution(){
   document.getElementById('evo-rollback').onclick=async()=>{try{const r=await evolutionCall('/ml/evolution/rollback',{});document.getElementById('evo-status').textContent=r.restored||'已回退';await renderEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.querySelectorAll('.evo-tab').forEach(b=>{b.onclick=()=>{EVO_METRIC=b.dataset.metric;renderEvolution();};});
 }
-document.addEventListener('DOMContentLoaded',()=>{renderEvolution();bindEvolution();});
+document.addEventListener('DOMContentLoaded',()=>{renderEvolution();bindEvolution();fetch('/ml/evolution/status').then(r=>r.json()).then(s=>{if(s.state==='running')pollEvolution();}).catch(()=>{});});

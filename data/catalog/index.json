@@ -1,0 +1,87 @@
+[
+  {
+    "id": "iris",
+    "name": "iris",
+    "target": "target",
+    "aliases": [
+      "iris",
+      "鸢尾花",
+      "花卉"
+    ],
+    "rows": 150,
+    "columns": 5,
+    "sha256": "2a142890aa4d797b0e8746373626a5d81d839bb5a4fd60ac1fbeee6faf0f62d5",
+    "provenance": {
+      "provider": "scikit-learn bundled real dataset",
+      "name": "iris",
+      "metadata_url": "https://scikit-learn.org/stable/datasets/toy_dataset.html",
+      "note": "Bundled benchmark dataset; research demonstration only."
+    }
+  },
+  {
+    "id": "wine",
+    "name": "wine",
+    "target": "target",
+    "aliases": [
+      "wine",
+      "葡萄酒",
+      "酒类"
+    ],
+    "rows": 178,
+    "columns": 14,
+    "sha256": "2cce9d95d7d95165a591b84741d15d3300f6862a135a28e3601249d42f303056",
+    "provenance": {
+      "provider": "scikit-learn bundled real dataset",
+      "name": "wine",
+      "metadata_url": "https://scikit-learn.org/stable/datasets/toy_dataset.html",
+      "note": "Bundled benchmark dataset; research demonstration only."
+    }
+  },
+  {
+    "id": "breast_cancer",
+    "name": "breast_cancer",
+    "target": "target",
+    "aliases": [
+      "breast cancer",
+      "cancer",
+      "乳腺癌",
+      "肿瘤"
+    ],
+    "rows": 569,
+    "columns": 31,
+    "sha256": "31d9ef5e091619aa2e970163522bffa9fbd9c173cd3ba0da1dbd0f8ab7900616",
+    "provenance": {
+      "provider": "scikit-learn bundled real dataset",
+      "name": "breast_cancer",
+      "metadata_url": "https://scikit-learn.org/stable/datasets/toy_dataset.html",
+      "note": "Bundled benchmark dataset; research demonstration only."
+    }
+  },
+  {
+    "id": "customer_churn",
+    "name": "churn",
+    "target": "class",
+    "aliases": [
+      "customer churn",
+      "churn",
+      "customer",
+      "客户流失",
+      "用户流失",
+      "客户",
+      "流失",
+      "电信流失"
+    ],
+    "rows": 5000,
+    "columns": 21,
+    "sha256": "c81d8ccb1d1d77438cccb2929510c9e5fa849cedcce187594bf347e186bc6252",
+    "provenance": {
+      "provider": "OpenML",
+      "dataset_id": "40701",
+      "name": "churn",
+      "metadata_url": "https://www.openml.org/api/v1/json/data/40701",
+      "download_url": "https://openml.org/data/v1/download/4965302/churn.arff",
+      "license": "public",
+      "note": "Public catalog provenance; no guarantee of suitability or permission for every downstream use."
+    }
+  }
+]
