@@ -172,6 +172,12 @@
       <div><div class="big-number" id="r-rb" style="font-size:24px">0</div><div class="big-label">回滚次数</div></div>
     </div>
 
+    <!-- 两条支线的判断（JEV 与 DeepSeek 并列） -->
+    <div class="branches">
+      <div class="branch jev" id="b-jev"><h3>JEV · 决策类</h3><div class="empty">等结果…</div></div>
+      <div class="branch cloud" id="b-cloud"><h3>DeepSeek · 思考类</h3><div class="empty">等结果…</div></div>
+    </div>
+
     <!-- 手动 / 自动 -->
     <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
       <div class="hint" style="margin-bottom:10px;font-weight:600;color:var(--ink)">继续迭代</div>
@@ -423,14 +429,16 @@ function renderCurrent(item, data) {
   showPanel('result');
 
   const b = data.branches || {};
-  if (b.jev) {
-    $('b-jev').innerHTML = `<h3>JEV · 决策支 <span class="hint" style="font-weight:400;font-size:12px">${b.jev.cost}</span></h3>
+  const jevBox = $('b-jev');
+  if (jevBox && b.jev) {
+    jevBox.innerHTML = `<h3>JEV · 决策支 <span class="hint" style="font-weight:400;font-size:12px">${b.jev.cost}</span></h3>
       <div class="verdict">${b.jev.verdict}</div>
       <div class="kv">它在问：<b>${b.jev.question}</b></div>
       <div class="kv">依据：${b.jev.reason}</div>`;
   }
-  if (b.cloud) {
-    $('b-cloud').innerHTML = `<h3>DeepSeek · 生成支 <span class="hint" style="font-weight:400;font-size:12px">${b.cloud.cost}</span></h3>
+  const cloudBox = $('b-cloud');
+  if (cloudBox && b.cloud) {
+    cloudBox.innerHTML = `<h3>DeepSeek · 生成支 <span class="hint" style="font-weight:400;font-size:12px">${b.cloud.cost}</span></h3>
       <div class="verdict">${b.cloud.status}</div>
       <div class="kv">它在问：<b>${b.cloud.question}</b></div>
       <div class="kv">${b.cloud.reason}</div>`;
@@ -447,9 +455,15 @@ function renderCurrent(item, data) {
   }).join('');
   showPanel('versions-card');
 
-  renderResearch(experiments, s, data.config || {});
-  renderMultiCharts(experiments);
-  renderEvidence(data.evidence || {});
+  // 每一块单独保护：任何一块出问题都不能让后面的图不画
+  try { renderResearch(experiments, s, data.config || {}); }
+  catch (e) { console.error('renderResearch', e); }
+  try { renderMultiCharts(experiments); }
+  catch (e) { console.error('renderMultiCharts', e); }
+  try { renderEvidence(data.evidence || {}); }
+  catch (e) { console.error('renderEvidence', e); }
+  try { renderRiskBanner(experiments); }
+  catch (e) { console.error('renderRiskBanner', e); }
 
   const label = {analyst_profile:'Analyst 看数据', manager_plan:'Manager 定预算',
     scientist_proposal:'Scientist 提方案', experiment:'Experimenter 跑完',
