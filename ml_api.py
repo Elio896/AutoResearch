@@ -154,11 +154,14 @@ def create_app(data_directory=None,client_factory=None,catalog_factory=None):
     def evolution_run(body: dict = Body(default={})):
         if _evo['proc'] is not None and _evo['proc'].poll() is None:
             raise HTTPException(409, 'A demo is already running.')
-        mode = (body or {}).get('mode', 'faulty')
-        if mode not in ('faulty', 'clean'):
-            raise HTTPException(422, 'mode must be faulty or clean.')
-        args = [_evo_python(), str(_evo_script()), '--reset']
-        if mode == 'faulty':
+        mode = (body or {}).get('mode', 'mixed')
+        if mode not in ('mixed', 'faulty', 'clean'):
+            raise HTTPException(422, 'mode must be mixed, faulty or clean.')
+        script = _evo_script()
+        args = [_evo_python(), str(script), '--reset']
+        if mode == 'mixed':
+            args = [_evo_python(), str(script.parent / 'evolution_mixed.py'), '--reset']
+        elif mode == 'faulty':
             args.append('--faulty')
         log_path = root / 'evolution-demo.log'
         with open(log_path, 'w', encoding='utf-8') as handle:

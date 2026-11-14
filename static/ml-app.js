@@ -217,7 +217,7 @@ async function pollEvolution(){
 function bindEvolution(){
   const faulty=document.getElementById('evo-run-faulty');
   if(!faulty) return;
-  faulty.onclick=async()=>{try{await evolutionCall('/ml/evolution/run',{mode:'faulty'});pollEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
+  faulty.onclick=async()=>{try{await evolutionCall('/ml/evolution/run',{mode:'mixed'});pollEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.getElementById('evo-run-clean').onclick=async()=>{try{await evolutionCall('/ml/evolution/run',{mode:'clean'});pollEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.getElementById('evo-rollback').onclick=async()=>{try{const r=await evolutionCall('/ml/evolution/rollback',{});document.getElementById('evo-status').textContent=r.restored||'已回退';await renderEvolution();}catch(e){document.getElementById('evo-status').textContent='失败：'+e.message;}};
   document.querySelectorAll('.evo-tab').forEach(b=>{b.onclick=()=>{EVO_METRIC=b.dataset.metric;renderEvolution();};});
