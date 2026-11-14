@@ -41,6 +41,35 @@ class RuleClassifier:
         return json.dumps({'category':category,'confidence':.75,'classifier_source':'rules'})
 
 
+class ChatClassifier:
+    """Classify a planned task with a normal chat model, so usage is reported."""
+    source='chat'
+    billing_provider='deepseek'
+    max_output_tokens=128
+
+    def __init__(self, client):
+        self.client=client
+        self.model=getattr(client,'model','deepseek-flash')
+        self.last_usage={}
+
+    def __call__(self, messages, timeout=20):
+        payload=messages[-1]['content']
+        prompt=[{'role':'system','content':
+                 'Classify this planned ML task into exactly one category. '
+                 'Return only JSON: {"category":"<one of the categories>","confidence":<0..1>}. '
+                 'Categories: '+json.dumps(CATEGORIES,ensure_ascii=False)},
+                {'role':'user','content':payload}]
+        text=self.client(prompt,timeout=timeout)
+        data=json.loads(text[text.find('{'):text.rfind('}')+1])
+        if data.get('category') not in CATEGORIES:
+            raise ValueError('Classifier returned an unknown category.')
+        confidence=data.get('confidence')
+        if not isinstance(confidence,(int,float)):
+            raise ValueError('Classifier confidence must be numeric.')
+        self.last_usage=getattr(self.client,'last_usage',{}) or {}
+        return json.dumps({'category':data['category'],'confidence':float(confidence)})
+
+
 class JevClassifier:
     source='jev' 
     billing_provider="typesafe"
@@ -91,7 +120,16 @@ def configured_clients(environ=None):
             base_url=env.get(prefix+'BASE_URL') or env.get('ML_BASE_URL') or env.get('LIGHT_MODEL_BASE_URL') or 'https://api.deepseek.com/v1',
             max_calls=50,max_output_tokens=768,structured_output=True)
     jev_key=env.get('JEV_API_KEY') or env.get('TYPESAFE_API_KEY')
-    clients['classifier']=JevClassifier(jev_key,env.get('ML_CLASSIFIER_MODEL') or 'jev-latest') if jev_key else RuleClassifier()
+    classifier_model=env.get('ML_CLASSIFIER_MODEL') or 'jev-latest'
+    classifier_provider=env.get('ML_CLASSIFIER_PROVIDER') or ('deepseek' if classifier_model.startswith('deepseek') else 'jev')
+    if classifier_provider=='deepseek':
+        clients['classifier']=ChatClassifier(LightModelClient(
+            env.get('ML_CLASSIFIER_API_KEY') or env.get('ML_API_KEY') or env.get('DEEPSEEK_API_KEY'),
+            model=classifier_model,
+            base_url=env.get('ML_CLASSIFIER_BASE_URL') or env.get('ML_BASE_URL') or 'https://api.deepseek.com/v1',
+            max_calls=50,max_output_tokens=128,structured_output=True))
+    else:
+        clients['classifier']=JevClassifier(jev_key,classifier_model) if jev_key else RuleClassifier()
     clients['source']=clients['planner']
     reviewer_key=env.get('ML_REVIEWER_API_KEY') or env.get('ML_API_KEY') or env.get('LIGHT_MODEL_API_KEY') or env.get('DEEPSEEK_API_KEY')
     reviewer_model=env.get('ML_REVIEWER_MODEL') or env.get('ML_HIGH_MODEL') or env.get('LIGHT_MODEL_NAME') or 'deepseek-v4-pro'

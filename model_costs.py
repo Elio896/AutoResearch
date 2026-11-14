@@ -32,6 +32,10 @@ def request_cost(record):
         row.update(calculated_usd=cost,calculated_min_usd=cost,calculated_max_usd=cost,
                    rates={'input_per_million':schedule.get('input_per_million',.042),'output_per_million':schedule.get('output_per_million',0)},source_url=JEV_URL)
         return row
+    if str(model).lower().startswith(('qwen','ollama','local:')):
+        row.update(calculated_usd=0.0,calculated_min_usd=0.0,calculated_max_usd=0.0,
+                   rates={'input_per_million':0.0,'output_per_million':0.0})
+        row['warnings'].append('本地推理，无 API 费用');return row
     if provider!='deepseek' or model not in schedule.get('rates',{}):
         row['warnings'].append('供应商或型号没有已核验价格');return row
     hit_rate,miss_rate,output_rate=schedule['rates'][model]

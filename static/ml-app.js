@@ -99,8 +99,26 @@ if(restoredComparison&&/^[a-f0-9]{32}$/.test(restoredComparison)){comparisonId=r
 
 if(new URLSearchParams(location.search).get('developer')==='1'||new URLSearchParams(location.search).has('comparison'))$('developer-panel').open=true;
 
-function costText(cost){if(!cost)return '未知';if(typeof cost.calculated_total_usd==='number')return '$'+cost.calculated_total_usd.toFixed(8);if(typeof cost.calculated_min_usd==='number'&&typeof cost.calculated_max_usd==='number')return '$'+cost.calculated_min_usd.toFixed(8)+'–$'+cost.calculated_max_usd.toFixed(8);return '不完整，不能算总费用';}
-function renderCosts(cost,billing){renderAccountBilling(billing);$('model-cost-total').textContent=cost?'官方公开单价核算合计：'+costText(cost)+'；账单实扣未获取。':'这份旧记录未采集费用所需信息，不能补造精确费用。';$('model-cost-rows').replaceChildren(...(cost?.models||[]).map(m=>{const tr=document.createElement('tr');const amount=typeof m.calculated_usd==='number'?'$'+m.calculated_usd.toFixed(8):typeof m.calculated_min_usd==='number'?'$'+m.calculated_min_usd.toFixed(8)+'–$'+m.calculated_max_usd.toFixed(8):'未知';for(const text of [m.model+' / '+m.calls,m.known_input_tokens+(m.unknown_usage_calls?'（不完整）':''),m.provider==='typesafe'?'不适用':m.requests.some(r=>r.cache_hit_tokens===null)?'未完整返回':m.known_cache_hit_tokens+' / '+m.known_cache_miss_tokens,m.known_output_tokens,amount,'未对账']){const td=document.createElement('td');td.textContent=text;tr.append(td);}return tr;}));$('model-cost-basis').textContent=cost?JSON.stringify({basis:cost.basis,verified:cost.price_verified_date,models:cost.models.map(m=>({model:m.model,sources:m.price_sources,conditions:m.requests.map(r=>({rates:r.rates,warnings:r.warnings}))}))},null,2):'无费用核算记录';}
+function costText(cost){
+  if(!cost) return '未知';
+  if(typeof cost.calculated_total_usd==='number') return '$'+cost.calculated_total_usd.toFixed(8);
+  if(typeof cost.calculated_min_usd==='number'&&typeof cost.calculated_max_usd==='number')
+    return '$'+cost.calculated_min_usd.toFixed(8)+'–$'+cost.calculated_max_usd.toFixed(8);
+  const models=cost.models||[];
+  const known=models.reduce((a,m)=>a+(typeof m.calculated_usd==='number'?m.calculated_usd:0),0);
+  const unknown=models.filter(m=>typeof m.calculated_usd!=='number'&&!isLocalModel(m.model));
+  if(known>0){
+    const names=unknown.map(m=>m.model).filter(Boolean);
+    return '$'+known.toFixed(8)+'（已知部分'+(names.length?'；未对账：'+names.join('、'):'')+'）';
+  }
+  return unknown.length?'不完整，不能算总费用':'$0.00000000（全部为本地推理）';
+}
+function isLocalModel(name){
+  if(!name) return false;
+  const n=String(name).toLowerCase();
+  return n.startsWith('qwen')||n.includes('ollama')||n.includes(':local')||n.includes('-local');
+}
+function renderCosts(cost,billing){renderAccountBilling(billing);$('model-cost-total').textContent=cost?'官方公开单价核算合计：'+costText(cost)+'；账单实扣未获取。':'这份旧记录未采集费用所需信息，不能补造精确费用。';$('model-cost-rows').replaceChildren(...(cost?.models||[]).map(m=>{const tr=document.createElement('tr');const amount=isLocalModel(m.model)?'本地推理 · $0':typeof m.calculated_usd==='number'?'$'+m.calculated_usd.toFixed(8):typeof m.calculated_min_usd==='number'?'$'+m.calculated_min_usd.toFixed(8)+'–$'+m.calculated_max_usd.toFixed(8):'未知';for(const text of [m.model+' / '+m.calls,m.known_input_tokens+(m.unknown_usage_calls?'（不完整）':''),m.provider==='typesafe'?'不适用':m.requests.some(r=>r.cache_hit_tokens===null)?'未完整返回':m.known_cache_hit_tokens+' / '+m.known_cache_miss_tokens,m.known_output_tokens,amount,'未对账']){const td=document.createElement('td');td.textContent=text;tr.append(td);}return tr;}));$('model-cost-basis').textContent=cost?JSON.stringify({basis:cost.basis,verified:cost.price_verified_date,models:cost.models.map(m=>({model:m.model,sources:m.price_sources,conditions:m.requests.map(r=>({rates:r.rates,warnings:r.warnings}))}))},null,2):'无费用核算记录';}
 
 let pricePolling=false;
 async function refreshPriceStatus(force=false){if(pricePolling&&!force)return;pricePolling=true;try{const s=await api(force?'/ml/pricing/refresh':'/ml/pricing',force?{}:undefined);$('price-refresh').disabled=s.refreshing;const descriptions=Object.entries(s.prices).map(([name,p])=>name+'：'+(p.status==='live'?'已更新':p.status==='stale'?'价格已过期/刷新失败':'内置参考价，尚未在线核验')+' · '+(p.fetched_at?new Date(p.fetched_at).toLocaleString():'无在线更新时间'));$('price-status').textContent=(s.refreshing?'正在后台获取官方价格；':'')+descriptions.join('；')+'。自动检查间隔 '+s.refresh_interval_seconds/60+' 分钟。历史任务价格快照不变。';$('price-current').textContent=JSON.stringify(s.prices,null,2);if(s.refreshing)setTimeout(()=>refreshPriceStatus(),2000);}catch(e){$('price-status').textContent='价格刷新暂不可用，保留上次核定价格；不会把旧价格标成实时。';$('price-refresh').disabled=false;}finally{pricePolling=false;}}
