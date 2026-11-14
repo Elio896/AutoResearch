@@ -341,6 +341,57 @@ def _evidence_pack(result: dict, config: dict, branches: dict) -> dict:
     # DeepSeek 定价按公开价粗估（输入 ¥1/百万、输出 ¥2/百万），只作为量级参考
     cloud_cost_cny = round(cloud_tokens / 1_000_000 * 1.5, 4) if cloud_tokens else 0.0
 
+    # 成本按来源拆开：JEV 和 DeepSeek 要各自独立可查
+    jev_events = annotate(events, 'jev_decision') + annotate(events, 'jev_harness_decision')
+    jev_input = sum(int((e.get('usage') or {}).get('input_tokens') or 0) for e in jev_events)
+    jev_output = sum(int((e.get('usage') or {}).get('output_tokens') or 0) for e in jev_events)
+    # TypeSafe Jev 按 System One 计价（粗估 ¥2/千次请求，仅量级参考）
+    jev_cost_cny = round(len(jev_events) * 0.002, 4) if jev_events else 0.0
+
+    cloud_events = annotate(events, 'cloud_proposal')
+    ds_input = sum(int((e.get('tokens') or {}).get('prompt') or 0) for e in cloud_events)
+    ds_output = sum(int((e.get('tokens') or {}).get('completion') or 0) for e in cloud_events)
+    ds_cost_cny = round((ds_input / 1_000_000 * 1.0 + ds_output / 1_000_000 * 2.0), 4) if cloud_events else 0.0
+
+    cost_breakdown = {
+        'jev': {'calls': len(jev_events), 'input_tokens': jev_input,
+                'output_tokens': jev_output, 'cost_cny': jev_cost_cny,
+                'note': 'TypeSafe Jev System One，按请求计价'},
+        'deepseek': {'calls': len(cloud_events), 'input_tokens': ds_input,
+                     'output_tokens': ds_output, 'cost_cny': ds_cost_cny,
+                     'note': 'DeepSeek，按 token 计价'},
+        'total': {'calls': len(jev_events) + len(cloud_events),
+                  'cost_cny': round(jev_cost_cny + ds_cost_cny, 4)},
+    }
+
+    # 迭代能力：多轮下来稳不稳、有没有持续变好
+    iteration = {'rounds': len(scores), 'trend': None, 'stability': None,
+                 'verdict': '数据不足（至少 2 轮才能判断）'}
+    if len(scores) >= 2:
+        half = max(1, len(scores) // 2)
+        first_half = scores[:half]
+        second_half = scores[half:] or scores[-1:]
+        mean_first = sum(first_half) / len(first_half)
+        mean_second = sum(second_half) / len(second_half)
+        variance = sum((s - (sum(scores) / len(scores))) ** 2 for s in scores) / len(scores)
+        std = variance ** 0.5
+        delta = mean_second - mean_first
+        if delta > 0.01:
+            verdict = f'越跑越好（后半段均值 +{delta:.4f}）'
+        elif delta < -0.01:
+            verdict = f'有退步（后半段均值 {delta:.4f}），但回滚机制兜住了'
+        else:
+            verdict = '基本持平（没有明显变好也没有崩）'
+        iteration = {
+            'rounds': len(scores),
+            'mean_first_half': round(mean_first, 4),
+            'mean_second_half': round(mean_second, 4),
+            'delta': round(delta, 4),
+            'std': round(std, 4),
+            'stability': round(1 - min(std, 1.0), 4),
+            'verdict': verdict,
+        }
+
     # 闭环六步：每步都要有事件支撑
     def has(name: str) -> bool:
         return bool(annotate(events, name))
@@ -390,6 +441,8 @@ def _evidence_pack(result: dict, config: dict, branches: dict) -> dict:
             'total_cost_cny': round(cloud_cost_cny, 4),
             'note': '本地不花钱；云端按公开价粗估，实际以账单为准',
         },
+        'cost_breakdown': cost_breakdown,
+        'iteration': iteration,
         'closed_loop': closed_loop,
         'autonomy': autonomy,
         'reproducibility': {
