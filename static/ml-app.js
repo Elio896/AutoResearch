@@ -99,11 +99,11 @@ function renderAccountBilling(billing){
 
 /* --- iterative test charts: one metric per tab (yuyu) --- */
 const EVO_METRICS={
-  tokens:{label:'累计 token',pick:s=>s.cumulative_tokens,unit:'token',color:'#b7ff50',
-          note:'每一步本地推理实际消耗的 token 累计（本地模型，零 API 花费）'},
+  tokens:{label:'单步 token',pick:s=>s.tokens,unit:'token',color:'#b7ff50',
+          note:'每一步本地推理消耗的 token；累计总量看上方摘要。转交的步骤不调用本地模型，因此为 0'},
   seconds:{label:'单任务耗时',pick:s=>s.seconds,unit:'秒',color:'#7fd1ff',
            note:'每一步从提问到试跑完成的墙钟时间；转交的步骤不调用本地模型，耗时为 0'},
-  waste:{label:'累计浪费调用',pick:s=>s.cumulative_wasted,unit:'次',color:'#ff8a5c',
+  waste:{label:'累计失败调用',pick:s=>s.cumulative_wasted,unit:'次',color:'#ff8a5c',
          note:'本地模型尝试失败、白跑一次的累计次数；能力表学会之后不再增加'},
   evidence:{label:'有证据路由',pick:s=>s.evidenced_ratio,unit:'%',color:'#ffd166',
             note:'路由时能力表里已有该数据桶记录的比例；0% 表示全靠试'},
