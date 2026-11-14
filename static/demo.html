@@ -180,13 +180,15 @@
     </div>
     <div id="chart-wrap" style="margin-top:18px">
       <div class="hint" style="margin-bottom:8px">每一轮的验证分数（实线 = 实际，虚线 = 历史最优）</div>
-      <svg id="chart" viewBox="0 0 720 220" style="width:100%;height:220px"></svg>
+      <svg id="chart" viewBox="0 0 720 200" style="width:100%;height:200px"></svg>
     </div>
 
-    <!-- 评委要看的证据 -->
-    <div id="evidence" style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
-      <div class="hint" style="margin-bottom:10px;font-weight:600;color:var(--ink)">评委要看的证据</div>
-      <div id="evidence-body" class="empty">跑一次研究，这里会出现性能提升、token 台账、闭环与回滚证据。</div>
+    <!-- 每个变量一条曲线 -->
+    <div id="multi-charts" style="margin-top:22px;display:grid;grid-template-columns:1fr 1fr;gap:18px"></div>
+
+    <!-- 明细表 -->
+    <div id="evidence" style="margin-top:22px;border-top:1px solid var(--line);padding-top:16px">
+      <div id="evidence-body" class="empty">跑一次研究，这里会出现性能提升、成本、迭代与回滚数据。</div>
     </div>
     <div id="research-detail" class="hidden" style="margin-top:18px">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -403,6 +405,7 @@ function renderCurrent(item, data) {
   showPanel('versions-card');
 
   renderResearch(experiments, s, data.config || {});
+  renderMultiCharts(experiments);
   renderEvidence(data.evidence || {});
 
   const label = {analyst_profile:'Analyst 看数据', manager_plan:'Manager 定预算',
@@ -451,6 +454,73 @@ function renderResearch(experiments, summary, config) {
     ${gap != null && gap > 0 ? `提升 <b style="color:var(--good)">+${gap.toFixed(4)}</b>` : '没有提升'} ·
     回滚 ${summary.evoundo_rollbacks ?? 0} 次 · 测试集 ${summary.test_evaluated ? '已评测' : '未触碰'}
     <br><span style="font-size:12px">指标 ${config.metric || '—'} · 预算 ${config.max_experiments ?? '—'} 次</span>`;
+}
+
+function renderMultiCharts(experiments) {
+  const wrap = $('multi-charts');
+  if (!experiments || !experiments.length) {
+    wrap.innerHTML = '';
+    return;
+  }
+  const scores = experiments.map((e) => Number(e.validation_score ?? e.validation_f1 ?? 0));
+  const times = experiments.map((e) => Number(e.duration_seconds ?? 0));
+  const best = Math.max(...scores);
+
+  // 每个序列一张小图
+  const series = [
+    {title:'验证分数（每轮）', values:scores, color:'#b45309', fmt:(v) => v.toFixed(3), bestLine:best},
+    {title:'耗时（秒）', values:times, color:'#1d4ed8', fmt:(v) => v.toFixed(2), bestLine:null},
+  ];
+  // 累计：如果有 token 字段就加上
+  const tokens = experiments.map((e) => Number(e.tokens ?? e.local_tokens ?? 0));
+  if (tokens.some((v) => v > 0)) {
+    series.push({title:'token 消耗（每轮）', values:tokens, color:'#15803d', fmt:(v) => String(v), bestLine:null});
+  }
+
+  wrap.innerHTML = series.map((s, idx) => `
+    <div style="border:1px solid var(--line);border-radius:12px;padding:14px">
+      <div class="hint" style="margin-bottom:8px;font-weight:600;color:var(--ink)">${s.title}</div>
+      <svg id="mini-chart-${idx}" viewBox="0 0 340 140" style="width:100%;height:140px"></svg>
+    </div>`).join('');
+
+  series.forEach((s, idx) => drawMini(`mini-chart-${idx}`, s));
+}
+
+function drawMini(id, s) {
+  const svg = $(id);
+  if (!svg) return;
+  const W = 340, H = 140, padL = 34, padR = 10, padT = 12, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const values = s.values;
+  if (!values.length) { svg.innerHTML = ''; return; }
+  const maxV = Math.max(...values, 1e-9);
+  const x = (i) => padL + (values.length === 1 ? plotW / 2 : (i / (values.length - 1)) * plotW);
+  const y = (v) => padT + plotH - (v / maxV) * plotH;
+  const parts = [];
+
+  // 网格
+  for (let k = 0; k <= 3; k++) {
+    const v = (maxV * k) / 3, yy = y(v);
+    parts.push(`<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="#eeeae5"/>`);
+    parts.push(`<text x="${padL - 6}" y="${yy + 3}" text-anchor="end" fill="#9a928a" font-size="9">${s.fmt(v)}</text>`);
+  }
+  values.forEach((_, i) => parts.push(
+    `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" fill="#9a928a" font-size="9">v${i+1}</text>`));
+
+  // 最优虚线
+  if (s.bestLine != null) {
+    parts.push(`<line x1="${padL}" y1="${y(s.bestLine)}" x2="${W - padR}" y2="${y(s.bestLine)}"
+      stroke="#15803d" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>`);
+  }
+
+  // 折线
+  parts.push(`<polyline points="${values.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"
+    fill="none" stroke="${s.color}" stroke-width="2"/>`);
+  values.forEach((v, i) => {
+    parts.push(`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${s.color}" stroke="#fff" stroke-width="1.2"/>`);
+    parts.push(`<text x="${x(i)}" y="${y(v) - 7}" text-anchor="middle" fill="${s.color}" font-size="9" font-weight="600">${s.fmt(v)}</text>`);
+  });
+  svg.innerHTML = parts.join('');
 }
 
 function renderEvidence(ev) {
