@@ -63,7 +63,8 @@ class ResearchLoop:
                  experience: ExperienceStore | None = None, task_name: str = '',
                  trajectory_dir: str | Path | None = None, run_id: str | None = None,
                  small_proposer=None, cloud_proposer=None, jev_gate=None,
-                 max_cloud_calls: int = 0, qwen_router=None, jev_harness=None):
+                 max_cloud_calls: int = 0, qwen_router=None, jev_harness=None,
+                 use_signal_router: bool = False):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -90,6 +91,8 @@ class ResearchLoop:
         self.qwen_router = qwen_router
         # Jev Harness：五道零 token 的语义门，先筛掉不值得上云的情况
         self.jev_harness = jev_harness
+        # 可计算信号路由：用行为证据代替"模型自评置信度"
+        self.use_signal_router = use_signal_router
         self._recent_rejections: list[str] = []
         self._last_gain = None
         self.blueteam = BlueTeam()
@@ -163,7 +166,10 @@ class ResearchLoop:
             if stop:
                 # 本地卡在平台期时，先问 JEV「这次花钱值不值」，值得才升级
                 if reason == 'validation_plateau' and self.cloud_scientist is not None:
-                    if self._try_escalate(best, profile, started, no_improvement):
+                    self._signal_wants_continue = False
+                    outcome = self._try_escalate(best, profile, started, no_improvement)
+                    if outcome in ('escalated', 'continue') or self._signal_wants_continue:
+                        # 信号路由说「本地还有空间」时，不该被 Manager 的停止判据直接截断
                         no_improvement = 0
                         continue
                 stop_reason = reason
@@ -273,6 +279,23 @@ class ResearchLoop:
             self._record('jev_harness_decision', **harness_decision.to_dict())
             if harness_decision.action != 'escalate':
                 return False
+
+        # 0.5) 可计算信号路由：用行为证据判「本地还有没有空间」
+        #      这一步和 JevHarness 互补：harness 看门（该不该上云），
+        #      信号看账（同类改动历史上涨过没有）。
+        if self.use_signal_router:
+            try:
+                from signal_router import decide as signal_decide, state_from_events
+                signal_state = state_from_events(self.events, self._experiments)
+                signal_state.stalled_rounds = max(signal_state.stalled_rounds, no_improvement)
+                signal_result = signal_decide(signal_state)
+                self._record('signal_router_decision', **signal_result)
+                if signal_result.get('action') != 'escalate':
+                    # 信号说「本地还有空间」——告诉调用方别急着收工
+                    self._signal_wants_continue = True
+                    return False
+            except Exception as exc:                # noqa: BLE001
+                self._record('signal_router_error', reason=str(exc)[:200])
 
         # 1a) 千问路由：本地小模型先判「要不要调、调哪个档」
         if self.qwen_router is not None:

@@ -39,6 +39,8 @@ def main():
     p.add_argument('--enable-jev', action='store_true', help='云端升级前先问 JEV 值不值得（需 TYPESAFE_API_KEY）')
     p.add_argument('--enable-qwen-router', action='store_true', help='让本地千问决定要不要调云端、调哪个档')
     p.add_argument('--enable-jev-harness', action='store_true', help='五道零 token 语义门（省 token 的那层）')
+    p.add_argument('--enable-signal-router', action='store_true',
+                   help='用可计算信号（首次合法率/重复率/停滞/同类改动Δ）判要不要升级')
     p.add_argument('--experience', default='', help='经验库 jsonl 路径（留空则不启用）')
     p.add_argument('--task-name', default='')
     p.add_argument('--output')
@@ -95,7 +97,8 @@ def main():
                         jev_gate=jev_gate,
                         max_cloud_calls=args.max_cloud_calls,
                         qwen_router=qwen_router,
-                        jev_harness=jev_harness)
+                        jev_harness=jev_harness,
+                        use_signal_router=args.enable_signal_router)
     result = loop.run()
 
     print('\n=== summary ===')
