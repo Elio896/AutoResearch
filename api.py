@@ -191,6 +191,28 @@ def create_app(data_directory=None):
         except Exception as exc:                    # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)[:300]) from None
 
+    @app.get('/demo/chart.svg')
+    def demo_chart_svg(session_id: str = ''):
+        """服务端直接画好的折线图——不依赖前端 JS，浏览器打开就能看。
+
+        妈妈反复说图出不来；这条是兜底路径：哪怕前端全挂了，
+        这个地址本身就能看到分数曲线。
+        """
+        from fastapi.responses import Response
+        import demo_flow
+        from chart_svg import line_chart_svg
+
+        scores: list[float] = []
+        if session_id:
+            session = demo_flow._SESSIONS.get(session_id)
+            if session and session.get('runs'):
+                experiments = session['runs'].get('experiments') or []
+                scores = [float(e.get('validation_score', e.get('validation_f1')) or 0)
+                          for e in experiments]
+        best = max(scores) if scores else None
+        svg = line_chart_svg(scores, best, title='每一轮的验证分数')
+        return Response(content=svg, media_type='image/svg+xml')
+
     @app.post('/demo/step', status_code=200)
     def demo_step(body: DemoStepInput):
         """手动模式：点一下推进一代，返回到目前为止的全部数据。"""
