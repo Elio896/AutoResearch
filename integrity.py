@@ -4,6 +4,19 @@ from pathlib import Path
 import re
 
 
+# 事后性词汇：这些名字暗示「结果出来之后才有的值」。
+# 真实案例：fraud 数据里的 chargeback_filed（只有立案后才是 1），
+# 名字不含 id、也不是唯一整数、与标签相关 0.87 没到 0.98——
+# 老规则全漏，于是系统报出 0.955 的假好成绩。
+POST_HOC_PATTERN = re.compile(
+    r'(^|[_\s-])('
+    r'chargeback|charge_back|refund|reversal|settled|settlement|'
+    r'filed|confirmed|verified|approved|declined|resolved|closed|'
+    r'outcome|result|final|label|verdict|decision|status_after|'
+    r'post_?hoc|after_?the_?fact'
+    r')([_\s-]|$)')
+
+
 def inspect_features(features, labels, dataset_hash, target):
     import pandas as pd
     registry_path = Path(__file__).with_name('known_leaks.json')
@@ -17,6 +30,9 @@ def inspect_features(features, labels, dataset_hash, target):
         signals = []
         if re.search(r'(^|[_\s-])(id|identifier|index|rowid|serial)([_\s-]|$)', column.lower()):
             signals.append('identifier_name')
+        # 事后字段：名字本身就说明它是结果出来之后才有的
+        if POST_HOC_PATTERN.search(column.lower()):
+            signals.append('post_hoc_name')
         numeric = pd.to_numeric(series, errors='coerce')
         valid = numeric.dropna()
         unique = series.nunique(dropna=True) / max(len(series), 1)
@@ -32,8 +48,15 @@ def inspect_features(features, labels, dataset_hash, target):
             signals.append('matches_training_target')
         if labels.nunique() == 2 and numeric.notna().sum() >= 20 and numeric.nunique() > 1:
             correlation = numeric.corr(encoded)
-            if pd.notna(correlation) and abs(correlation) >= 0.98:
+            # 0.98 太严：事后二值列与标签相关常在 0.85~0.95 之间。
+            # 阈值放到 0.85 只标「候选」，仍然要求人审，不自动排除。
+            if pd.notna(correlation) and abs(correlation) >= 0.85:
                 signals.append('strong_training_association')
+            # 二值列 + 与标签几乎一致：典型的「结果字段」
+            if numeric.nunique() == 2 and pd.notna(correlation) and abs(correlation) >= 0.80:
+                agree = (numeric.round() == encoded).mean()
+                if agree >= 0.90 or agree <= 0.10:
+                    signals.append('binary_matches_label_outcome')
         if column in known:
             findings.append({'column': column, 'level': 'confirmed',
                              'signals': signals, 'evidence': known[column]['source']})

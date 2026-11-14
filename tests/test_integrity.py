@@ -122,3 +122,46 @@ class IntegrityTests(unittest.TestCase):
         after = inspect_features(frame.drop(columns='target').iloc[training],
             frame.target.astype(str).iloc[training], 'not-a-known-hash', 'target')
         self.assertEqual(before, after)
+
+    def test_flags_post_hoc_column_like_chargeback_filed(self):
+        """二德子报的缺陷：事后字段名字不含 id、相关不到 0.98，老规则全漏。
+
+        真实后果：fraud 数据保留它 F1=0.955，剔除后 0.635，差 0.32。
+        修法：加事后性列名规则 + 把相关阈值放到 0.85（仍标 candidate，要人审）。
+        """
+        import numpy as np
+        import pandas as pd
+        from integrity import inspect_features
+
+        rng = np.random.default_rng(7)
+        n = 600
+        labels = pd.Series(rng.choice(['0', '1'], size=n, p=[0.95, 0.05]))
+        fraud = (labels == '1').to_numpy()
+        frame = pd.DataFrame({
+            'amount': rng.normal(100, 40, n).round(2),
+            'hour': rng.integers(0, 24, n),
+            # 事后列：只有立案后才是 1，带 10% 噪声
+            'chargeback_filed': (fraud.astype(int) ^ (rng.random(n) < 0.10).astype(int)),
+        })
+        findings = inspect_features(frame, labels, 'synthetic', 'target')
+        hit = [f for f in findings if f['column'] == 'chargeback_filed']
+        self.assertTrue(hit, 'chargeback_filed 应该被标出来')
+        self.assertIn('post_hoc_name', hit[0]['signals'])
+        self.assertEqual(hit[0]['level'], 'candidate')   # 候选，仍需人审
+
+    def test_normal_features_are_not_flagged(self):
+        """别修过头：普通特征不该被误标。"""
+        import numpy as np
+        import pandas as pd
+        from integrity import inspect_features
+
+        rng = np.random.default_rng(11)
+        n = 600
+        labels = pd.Series(rng.choice(['0', '1'], size=n))
+        frame = pd.DataFrame({
+            'amount': rng.normal(100, 40, n).round(2),
+            'hour': rng.integers(0, 24, n),
+            'merchant': rng.integers(0, 5, n),
+        })
+        findings = inspect_features(frame, labels, 'synthetic2', 'target')
+        self.assertEqual(findings, [])
