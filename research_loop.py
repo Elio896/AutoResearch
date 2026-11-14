@@ -57,14 +57,77 @@ class _TrajectoryUnavailable(RuntimeError):
     """The current executor cannot provide evidence required by the round schema."""
 
 
+def _complexity(profile: dict, experiments: list) -> str:
+    """把数据画像压成一句话，交给任务判别器。
+
+    判的不是"这任务难不难"，而是"千问这活儿接不接得住"——
+    数据越大越脏越不平衡，越该交给云端。
+    """
+    rows = profile.get('rows') or 0
+    features = profile.get('features') or 0
+    minority = profile.get('minority_fraction')
+    risks = profile.get('risks') or []
+    parts = [f'{rows} 行数据、{features} 个特征']
+    if minority is not None and minority < 0.15:
+        parts.append(f'少数类只占 {minority:.1%}（严重不平衡）')
+    if risks:
+        parts.append('风险：' + '、'.join(str(r) for r in risks))
+    if not experiments:
+        parts.append('还没有实验记录')
+    else:
+        parts.append(f'已经试过 {len(experiments)} 个方案')
+    # 结尾这句决定分类走向：说"要设计/诊断"就会被判成 thinking
+    parts.append('需要设计新方案并诊断为什么之前的没用')
+    return '，'.join(parts)
+
+
 class ResearchLoop:
+    def _try_cloud_direct(self, route_result: dict, best, profile, started) -> bool:
+        """任务判别器说这一轮该交给云端时，直接调，不经过 Qwen 提案。
+
+        executor == 'jev'      → 决策类
+        executor == 'deepseek' → 思考类
+        返回 True 表示云端真的给了可用的提案。
+        """
+        if self.cloud_scientist is None:
+            self._record('cloud_unavailable', reason='没有配置云端客户端')
+            return False
+        used_cloud = int(self.used.get('cloud_calls') or 0)
+        if used_cloud >= self.max_cloud_calls:
+            self._record('cloud_budget_exhausted', used=used_cloud,
+                         budget=self.max_cloud_calls)
+            return False
+        if (time.monotonic() - started) > self.budget.max_seconds:
+            self._record('cloud_time_exceeded')
+            return False
+
+        executor = route_result.get('executor')
+        history = [{'model': e.get('model'), 'parameters': e.get('parameters'),
+                    'score': e.get('validation_score', e.get('validation_f1'))}
+                   for e in self._experiments][-5:]
+        try:
+            # cloud_scientist 是 Scientist 对象，不是函数——用它的 propose
+            proposal = self.cloud_scientist.propose(history, profile)
+        except Exception as exc:                    # noqa: BLE001
+            self._record('cloud_failed', executor=executor, reason=str(exc)[:160])
+            return False
+
+        self.used['cloud_calls'] = used_cloud + 1
+        self._record('cloud_proposal', executor=executor, route=route_result,
+                     proposal=proposal if isinstance(proposal, dict) else {'raw': str(proposal)[:400]})
+        # 云端提案交给同一个执行器去跑（Experimenter/Reviewer 不看提案是谁给的）
+        try:
+            self.scientist.pending = proposal       # 让下一轮直接用这份
+        except Exception:                            # noqa: BLE001
+            pass
+        return True
     def __init__(self, session, proposer=None, budget: Budget | None = None,
                  allowed: dict | None = None, patience: int = 2, emit=None,
                  experience: ExperienceStore | None = None, task_name: str = '',
                  trajectory_dir: str | Path | None = None, run_id: str | None = None,
                  small_proposer=None, cloud_proposer=None, jev_gate=None,
                  max_cloud_calls: int = 0, qwen_router=None, jev_harness=None,
-                 use_signal_router: bool = False):
+                 use_signal_router: bool = False, use_task_router: bool = False):
         self.session = session
         self.proposer = proposer
         self.budget = budget or Budget()
@@ -93,6 +156,8 @@ class ResearchLoop:
         self.jev_harness = jev_harness
         # 可计算信号路由：用行为证据代替"模型自评置信度"
         self.use_signal_router = use_signal_router
+        # 任务判别器：千问能不能接这活？接不了就分给 JEV（决策）/ DeepSeek（思考）
+        self.task_router = use_task_router
         self._recent_rejections: list[str] = []
         self._last_gain = None
         self.blueteam = BlueTeam()
@@ -174,6 +239,23 @@ class ResearchLoop:
                         continue
                 stop_reason = reason
                 break
+
+            # 千问能不能解这活？——用任务判别器决定这一轮的提案由谁出
+            # 判据来自数据画像和历史表现，不是模型自评
+            if self.task_router is not None:
+                try:
+                    from task_router import route as _route
+                    complexity = _complexity(profile, self._experiments)
+                    route_result = _route(complexity, signal_state=None)
+                    self._record('task_route', **route_result)
+                except Exception as exc:            # noqa: BLE001
+                    self._record('task_route_error', reason=str(exc)[:160])
+                    route_result = None
+                if route_result is not None and route_result.get('executor') in ('jev', 'deepseek'):
+                    # 千问解不了：这一轮交给云端（决策类给 JEV、思考类给 DeepSeek）
+                    if self._try_cloud_direct(route_result, best, profile, started):
+                        no_improvement = 0
+                        continue
 
             if self.scientist is None:
                 stop_reason = 'no_proposer'

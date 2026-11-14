@@ -41,6 +41,8 @@ def main():
     p.add_argument('--enable-jev-harness', action='store_true', help='五道零 token 语义门（省 token 的那层）')
     p.add_argument('--enable-signal-router', action='store_true',
                    help='用可计算信号（首次合法率/重复率/停滞/同类改动Δ）判要不要升级')
+    p.add_argument('--enable-task-router', action='store_true',
+                   help='任务判别器：千问接不了的活分给 JEV（决策）/ DeepSeek（思考）')
     p.add_argument('--experience', default='', help='经验库 jsonl 路径（留空则不启用）')
     p.add_argument('--task-name', default='')
     p.add_argument('--output')
@@ -98,7 +100,8 @@ def main():
                         max_cloud_calls=args.max_cloud_calls,
                         qwen_router=qwen_router,
                         jev_harness=jev_harness,
-                        use_signal_router=args.enable_signal_router)
+                        use_signal_router=args.enable_signal_router,
+                        use_task_router=args.enable_task_router)
     result = loop.run()
 
     print('\n=== summary ===')
